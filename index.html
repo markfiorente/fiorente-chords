@@ -1,0 +1,1871 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Mark Chords — Agua Fresca</title>
+<link rel="icon" href="data:,">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{ --stage-font: 32px; }
+  * { -webkit-tap-highlight-color: transparent; }
+  html,body{ overflow-x:hidden; height:100%; }
+  body{ font-family:'Inter',sans-serif; }
+  .mono{ font-family:'JetBrains Mono',monospace; }
+  ::-webkit-scrollbar{ width:10px; height:10px; }
+  ::-webkit-scrollbar-track{ background:#0a0a0a; }
+  ::-webkit-scrollbar-thumb{ background:#262626; border-radius:9999px; }
+  ::-webkit-scrollbar-thumb:hover{ background:#f97316; }
+  .chart-view .chord-tok{ color:#fdba74; font-weight:800; }
+  .chart-view .lyric-line{ color:#e5e5e5; white-space:pre-wrap; }
+  .chart-view .chord-line{ white-space:pre; }
+  .chart-view .section-header{ color:#fb923c; text-transform:uppercase; letter-spacing:.08em; font-weight:800; font-size:.85em; margin:1em 0 .3em; border-bottom:1px solid rgba(249,115,22,.25); padding-bottom:.2em; display:flex; align-items:center; }
+  #view-stage .chart-view .section-header{ cursor:pointer; }
+  #view-stage .chart-view .section-header:active{ opacity:.6; }
+  .chart-view .section-header::before{ content:''; display:inline-block; width:.5em; height:.5em; background:#f97316; border-radius:2px; margin-right:.6em; flex-shrink:0; }
+  .chart-view .spacer{ height:.6em; }
+  #view-stage .chart-view{ font-size:var(--stage-font); }
+  .fade-in{ animation:fadeIn .15s ease-out; }
+  @keyframes fadeIn{ from{ opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);} }
+  input[type=range]{ accent-color:#f97316; }
+  .line-clamp-2{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+</style>
+</head>
+<body class="bg-black text-neutral-100 h-screen flex flex-col overflow-hidden">
+
+<!-- ================= HEADER ================= -->
+<header id="appHeader" class="h-14 shrink-0 flex items-center gap-2 px-3 sm:px-4 border-b border-neutral-800 bg-black z-30">
+  <button id="btnHome" class="flex items-center gap-2 shrink-0">
+    <span class="w-8 h-8 rounded-lg bg-orange-500 text-black flex items-center justify-center text-sm"><i class="fa-solid fa-music"></i></span>
+    <span class="hidden xs:flex items-center gap-2">
+      <span class="font-extrabold text-white leading-none whitespace-nowrap">Mark Chords</span>
+      <span class="hidden sm:inline text-[10px] font-bold uppercase tracking-wide text-orange-400 bg-orange-500/10 border border-orange-500/20 rounded-full px-2 py-0.5 whitespace-nowrap">Pianista: Mark</span>
+    </span>
+  </button>
+  <div class="flex-1"></div>
+  <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+    <button id="btnSyncSheet" title="Sincronizar Google Sheet" class="h-9 w-9 sm:w-auto sm:px-3 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 hover:text-orange-400 text-sm font-semibold flex items-center justify-center gap-2"><i id="syncIcon" class="fa-solid fa-rotate"></i><span class="hidden sm:inline">Sincronizar</span></button>
+    <button id="btnImportExcel" title="Importar Excel" class="h-9 w-9 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 hover:text-orange-400 flex items-center justify-center"><i class="fa-solid fa-file-excel"></i></button>
+    <button id="btnAddSong" title="Agregar canción" class="h-9 w-9 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 hover:text-orange-400 flex items-center justify-center"><i class="fa-solid fa-plus"></i></button>
+    <button id="btnMore" title="Más opciones" class="h-9 w-9 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 hover:text-orange-400 flex items-center justify-center"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+    <button onclick="openSetlistModal()" title="Setlist de hoy" class="h-9 w-9 sm:w-auto sm:px-3 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 hover:text-orange-400 text-sm font-semibold flex items-center justify-center gap-2"><i class="fa-solid fa-list-check"></i><span class="hidden sm:inline">Setlist</span></button>
+    <button id="btnStageHeader" onclick="enterStageMode()" disabled class="h-9 px-3 sm:px-4 rounded-lg bg-orange-500 hover:bg-orange-400 text-black text-sm font-extrabold flex items-center gap-2 disabled:opacity-30 disabled:pointer-events-none"><i class="fa-solid fa-tv"></i><span class="hidden sm:inline">MODO EN VIVO</span></button>
+  </div>
+</header>
+
+<!-- ================= BODY: SIDEBAR + MAIN ================= -->
+<div class="flex flex-1 min-h-0">
+
+  <!-- SIDEBAR / LIBRARY -->
+  <aside id="view-library" class="flex-col w-full lg:w-[300px] shrink-0 border-r border-neutral-800 min-h-0 lg:flex">
+    <div class="p-3 border-b border-neutral-800 space-y-2 shrink-0">
+      <div class="relative">
+        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600 text-xs"></i>
+        <input id="searchInput" type="text" placeholder="Buscar por título o artista..." class="w-full bg-neutral-900 border border-neutral-800 rounded-lg pl-8 pr-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:ring-1 focus:ring-orange-500/60 focus:border-orange-500/60">
+      </div>
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-[11px] font-bold uppercase tracking-wide text-neutral-500 whitespace-nowrap">Biblioteca (<span id="libraryCount">0</span>)</span>
+        <select id="keyFilterSelect" class="text-xs bg-neutral-900 border border-neutral-800 rounded-md px-2 py-1 text-neutral-300 max-w-[150px] focus:outline-none"></select>
+      </div>
+    </div>
+    <div class="flex-1 overflow-y-auto p-2">
+      <div id="songList"></div>
+      <div id="libraryEmpty" class="hidden flex-col items-center text-center gap-3 py-10 px-3">
+        <div class="w-12 h-12 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-xl text-neutral-600"><i class="fa-solid fa-book-open"></i></div>
+        <p class="text-sm text-neutral-500">Tu repertorio está vacío.</p>
+        <div class="flex flex-col gap-2 w-full">
+          <button onclick="openAddSongModal()" class="px-3 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 text-black font-bold text-xs">+ Agregar canción</button>
+          <button onclick="openSyncSheetModal()" class="px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 font-semibold text-xs">Sincronizar Google Sheet</button>
+        </div>
+      </div>
+      <div id="searchEmpty" class="hidden text-center text-neutral-600 py-10 text-xs">Sin resultados para esa búsqueda.</div>
+    </div>
+    <div class="p-2.5 border-t border-neutral-800 flex items-center justify-between text-[10px] text-neutral-600 shrink-0">
+      <span>Mark Chords v3.0</span>
+      <button onclick="state.search=''; document.getElementById('searchInput').value=''; state.keyFilter=''; renderLibrary();" class="hover:text-orange-400">Resetear filtros</button>
+    </div>
+  </aside>
+
+  <!-- MAIN / DETAIL -->
+  <main id="view-detail" class="hidden flex-col flex-1 min-h-0 overflow-y-auto lg:flex">
+    <button id="btnBackToLibrary" onclick="showView('library')" class="lg:hidden m-3 self-start text-neutral-400 hover:text-white text-sm flex items-center gap-2"><i class="fa-solid fa-arrow-left"></i> Volver a la biblioteca</button>
+
+    <div id="mainEmpty" class="hidden flex-1 flex-col items-center justify-center text-center gap-3 p-8">
+      <div class="w-16 h-16 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-3xl text-neutral-700"><i class="fa-solid fa-music"></i></div>
+      <h2 class="text-lg font-bold text-white">Selecciona una canción</h2>
+      <p class="text-sm text-neutral-500 max-w-xs">Elige una canción de tu biblioteca o agrega una nueva para empezar.</p>
+    </div>
+
+    <div id="mainContent" class="hidden flex-col gap-4 p-4 sm:p-6 max-w-4xl w-full mx-auto">
+      <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div class="min-w-0">
+            <h1 id="dTitle" class="text-2xl font-extrabold text-white truncate"></h1>
+            <p id="dArtist" class="text-neutral-400 text-sm mt-0.5"></p>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button id="btnFavorite" onclick="toggleFavorite(state.currentSongId)" class="w-10 h-10 rounded-lg bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center text-neutral-400"><i class="fa-solid fa-star"></i></button>
+            <button onclick="openEditSongModal(state.currentSongId)" class="w-10 h-10 rounded-lg bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center"><i class="fa-solid fa-pen"></i></button>
+            <button onclick="handleDeleteSong(state.currentSongId)" class="w-10 h-10 rounded-lg bg-neutral-800 hover:bg-red-900/60 text-red-400 flex items-center justify-center"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap gap-2 mt-3" id="dMeta"></div>
+
+        <div class="flex flex-wrap items-center gap-3 mt-4 bg-black/40 border border-neutral-800 rounded-xl p-3">
+          <span class="text-xs text-neutral-500 font-semibold uppercase tracking-wide">Tono actual</span>
+          <div class="flex items-center gap-1">
+            <button onclick="stepTranspose(-1)" class="w-8 h-8 rounded-md bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center"><i class="fa-solid fa-minus text-xs"></i></button>
+            <span id="dCurrentKey" class="max-w-[9rem] text-center font-mono font-extrabold text-orange-400 text-lg truncate"></span>
+            <button onclick="stepTranspose(1)" class="w-8 h-8 rounded-md bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center"><i class="fa-solid fa-plus text-xs"></i></button>
+          </div>
+          <select id="dTargetKey" class="bg-neutral-800 border border-neutral-700 rounded-md text-sm px-2 py-1.5 focus:outline-none"></select>
+          <button onclick="resetTranspose()" class="text-xs text-neutral-500 hover:text-orange-400 underline">Restablecer</button>
+          <div class="flex items-center gap-1 ml-auto">
+            <button onclick="detailFontStep(-1)" class="w-7 h-7 rounded-md bg-neutral-800 hover:bg-neutral-700 text-[10px] font-bold flex items-center justify-center">A-</button>
+            <span id="dFontSizeLabel" class="text-[10px] text-neutral-500 w-8 text-center"></span>
+            <button onclick="detailFontStep(1)" class="w-7 h-7 rounded-md bg-neutral-800 hover:bg-neutral-700 text-xs font-bold flex items-center justify-center">A+</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5">
+        <h3 class="text-xs font-bold text-neutral-500 uppercase tracking-wide mb-3 flex items-center gap-2"><i class="fa-solid fa-headphones"></i> Secuencia / Audio MP3</h3>
+        <div id="dMp3Area"></div>
+      </div>
+
+      <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5">
+        <div id="dChart" class="chart-view mono leading-relaxed"></div>
+        <div id="dChartEmpty" class="hidden text-center text-neutral-600 text-sm py-10">Sin cifrado todavía. <button onclick="openEditSongModal(state.currentSongId)" class="text-orange-400 underline">Pega el cifrado aquí</button>.</div>
+      </div>
+
+      <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5">
+        <h3 class="text-xs font-bold text-neutral-500 uppercase tracking-wide mb-3 flex items-center gap-2"><i class="fa-brands fa-youtube"></i> Referencia</h3>
+        <div id="dYoutubeArea"></div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5">
+          <h3 class="text-xs font-bold text-neutral-500 uppercase tracking-wide mb-3 flex items-center gap-2"><i class="fa-solid fa-list-ol"></i> Estructura</h3>
+          <div id="dSequence" class="flex flex-wrap gap-1.5"></div>
+        </div>
+        <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5">
+          <h3 class="text-xs font-bold text-neutral-500 uppercase tracking-wide mb-3 flex items-center gap-2"><i class="fa-solid fa-keyboard"></i> Anotaciones de teclado</h3>
+          <p id="dAnnotations" class="text-sm text-neutral-300 whitespace-pre-wrap"></p>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ================= STAGE MODE ================= -->
+<section id="view-stage" class="hidden fixed inset-0 z-40 bg-black flex flex-col">
+  <div class="flex items-center justify-between gap-2 px-3 sm:px-4 py-2.5 bg-black border-b border-neutral-800 shrink-0">
+    <button onclick="exitStageMode()" class="w-9 h-9 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 flex items-center justify-center shrink-0"><i class="fa-solid fa-xmark"></i></button>
+    <button onclick="stagePrev()" title="Canción anterior" class="stage-nav-btn w-8 h-8 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 flex items-center justify-center shrink-0"><i class="fa-solid fa-chevron-left text-xs"></i></button>
+    <div class="text-center flex-1 min-w-0">
+      <div id="sTitle" class="font-bold truncate text-sm sm:text-base"></div>
+      <div id="sSubtitle" class="text-[11px] text-neutral-500 truncate"></div>
+    </div>
+    <button onclick="stageNext()" title="Siguiente canción" class="stage-nav-btn w-8 h-8 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 flex items-center justify-center shrink-0"><i class="fa-solid fa-chevron-right text-xs"></i></button>
+    <div class="flex items-center gap-1 shrink-0">
+      <button onclick="stageFontStep(-2)" class="w-9 h-9 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 flex items-center justify-center text-xs font-bold">A-</button>
+      <button onclick="stageFontStep(2)" class="w-9 h-9 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 flex items-center justify-center text-sm font-bold">A+</button>
+    </div>
+  </div>
+  <select id="sSectionJump" class="hidden w-full bg-neutral-900 border-b border-neutral-800 text-neutral-300 text-xs px-3 py-1.5 focus:outline-none shrink-0"></select>
+  <div id="stageScrollArea" class="flex-1 overflow-y-auto px-4 sm:px-8 py-6">
+    <div id="sChart" class="chart-view mono max-w-3xl mx-auto pb-40"></div>
+  </div>
+  <div class="shrink-0 bg-black border-t border-neutral-800 px-3 sm:px-4 py-2.5 flex items-center gap-3">
+    <button id="btnAutoScroll" onclick="toggleAutoScroll()" class="w-11 h-11 rounded-full bg-orange-500 hover:bg-orange-400 text-black flex items-center justify-center shrink-0"><i id="autoScrollIcon" class="fa-solid fa-play"></i></button>
+    <i class="fa-solid fa-gauge-simple text-neutral-600 text-sm"></i>
+    <input id="scrollSpeed" type="range" min="1" max="10" value="3" class="flex-1">
+    <span class="text-xs text-neutral-500 w-10 text-right"><span id="scrollSpeedLabel">3</span>x</span>
+  </div>
+</section>
+
+<div id="modalRoot"></div>
+<div id="toastRoot" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] flex flex-col gap-2 items-center pointer-events-none"></div>
+
+<script>
+/* ============================================================
+   CONSTANTES DE TRANSPOSICIÓN
+   ============================================================ */
+const CHROMATIC_SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const CHROMATIC_FLAT  = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+const FLAT_KEYS = ['F','Bb','Eb','Ab','Db','Dm','Gm','Cm','Fm','Bbm'];
+const KEY_OPTIONS = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+
+const QUALITY_RE = '(?:maj13|maj9|maj7|maj|m7b5|m9|m7|m6|m11|m|min7|min9|min|dim7|dim|aug|sus2|sus4|sus|add11|add9|add2|6\\/9|69|2|4|5|6|7|9|11|13)?';
+const CHORD_TOKEN_REGEX = new RegExp(`^(N\\.?C\\.?)$|^([A-G])(#|b)?(${QUALITY_RE})(?:\\/([A-G])(#|b)?)?$`, 'i');
+
+function transposeNote(note, semitones, useFlats){
+  const n = note[0].toUpperCase() + note.slice(1).replace('B','b');
+  let idx = CHROMATIC_SHARP.indexOf(n);
+  if (idx === -1) idx = CHROMATIC_FLAT.indexOf(n);
+  if (idx === -1) return note;
+  const newIdx = ((idx + semitones) % 12 + 12) % 12;
+  return useFlats ? CHROMATIC_FLAT[newIdx] : CHROMATIC_SHARP[newIdx];
+}
+
+// Cifrados pegados de un Google Doc a veces usan los signos musicales Unicode reales
+// (♭ ♯ ♮) en vez de los ASCII "b"/"#" que espera CHORD_TOKEN_REGEX — se normalizan
+// antes de cualquier intento de reconocer/transportar un token.
+function normalizeChordUnicode(s){
+  return String(s).replace(/♭/g, 'b').replace(/♯/g, '#').replace(/♮/g, '');
+}
+
+function transposeChord(token, semitones, targetKey){
+  const m = CHORD_TOKEN_REGEX.exec(normalizeChordUnicode(token.trim()));
+  if (!m) return token;
+  if (m[1]) return token; // N.C.
+  const useFlats = FLAT_KEYS.includes(targetKey);
+  const newRoot = transposeNote(m[2] + (m[3]||''), semitones, useFlats);
+  let out = newRoot + (m[4]||'');
+  if (m[5]){
+    const newBass = transposeNote(m[5] + (m[6]||''), semitones, useFlats);
+    out += '/' + newBass;
+  }
+  return out;
+}
+
+// Símbolos musicales Unicode (bloque "Musical Symbols" U+1D100–U+1D1FF: barras de
+// repetición 𝄆𝄇, compás 𝄀, silencios 𝄼𝄻, figuras rítmicas 𝅘𝅥, etc.) más "." y "%",
+// comunes en cifrados escritos con notación de partitura en vez de texto simple.
+// No se transportan (transposeChord los deja intactos), pero no deben hacer que la
+// línea entera se trate como letra sin acordes.
+const NOTATION_SYMBOL_REGEX = /^[\u{1D100}-\u{1D1FF}.%]+$/u;
+
+function isChordLine(line){
+  const tokens = line.trim().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return false;
+  let hasChordOrSymbol = false;
+  for (const t of tokens){
+    if (CHORD_TOKEN_REGEX.test(normalizeChordUnicode(t))) { hasChordOrSymbol = true; continue; }
+    if (NOTATION_SYMBOL_REGEX.test(t)){
+      // Un token de solo "." o "%" (sin un símbolo real de partitura) se tolera como
+      // parte de una línea de acordes ya establecida, pero no basta por sí solo para
+      // clasificar la línea como de acordes (evita que una letra "..." se confunda).
+      if (/[\u{1D100}-\u{1D1FF}]/u.test(t)) hasChordOrSymbol = true;
+      continue;
+    }
+    return false;
+  }
+  return hasChordOrSymbol;
+}
+
+// Nombres de sección comunes en español/inglés, para reconocerlos aunque no vengan
+// entre corchetes (ej. "Verso" o "Coro 2" solos en su propia línea).
+const SECTION_KEYWORDS_RE = /^(intro|verso|coro|pre-?coro|puente|preludio|interludio|instrumental|estrofa|refr[aá]n|coda|bridge|chorus|verse|tag|vamp|outro|final)\s*[\divx]*\.?$/i;
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// bpm puede venir de datos externos (backup .json importado, o la copia de la nube si
+// llegara a estar manipulada) — nunca se interpola crudo en innerHTML sin pasar por esto.
+function safeBpm(v){
+  const n = Math.trunc(Number(v));
+  return Number.isFinite(n) && n > 0 && n < 1000 ? n : null;
+}
+
+// Clasifica una línea del cifrado (sección / acordes / letra / vacío) — usado tanto
+// por renderChordChart como por extractSectionLabels, para que la lista de saltos
+// rápidos de Modo En Vivo nunca quede desincronizada de los encabezados renderizados.
+function classifyLine(rawLine){
+  const trimmed = rawLine.trim();
+  const bracket = trimmed.match(/^\[(.+)\]$/);
+  if (bracket) return { type:'section', label: bracket[1] };
+  if (trimmed && SECTION_KEYWORDS_RE.test(trimmed)) return { type:'section', label: trimmed };
+  if (!trimmed) return { type:'spacer' };
+  return { type: isChordLine(rawLine) ? 'chord' : 'lyric' };
+}
+
+function extractSectionLabels(chordsText){
+  if (!chordsText) return [];
+  return chordsText.split('\n')
+    .map((line, i) => ({ line: i, ...classifyLine(line) }))
+    .filter(c => c.type === 'section')
+    .map(c => ({ line: c.line, label: c.label }));
+}
+
+function renderChordChart(chordsText, semitones, targetKey){
+  if (!chordsText || !chordsText.trim()) return '';
+  return chordsText.split('\n').map(line => {
+    const c = classifyLine(line);
+    if (c.type === 'section') return `<div class="section-header">${escapeHtml(c.label)}</div>`;
+    if (c.type === 'spacer') return `<div class="spacer">&nbsp;</div>`;
+    if (c.type === 'chord'){
+      const html = line.split(/(\s+)/).map(part =>
+        /\S/.test(part)
+          ? `<span class="chord-tok">${escapeHtml(transposeChord(part, semitones, targetKey))}</span>`
+          : escapeHtml(part)
+      ).join('');
+      return `<div class="chord-line">${html}</div>`;
+    }
+    return `<div class="lyric-line">${escapeHtml(line)}</div>`;
+  }).join('');
+}
+
+/* ============================================================
+   CAPA DE DATOS
+   ============================================================ */
+const STORAGE_KEY = 'mark_chords_songs';
+const STAGE_FONT_KEY = 'mark_chords_stage_fontsize';
+const DETAIL_FONT_KEY = 'mark_chords_detail_fontsize';
+
+function loadSongs(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return [];
+  try { return JSON.parse(raw); } catch(e){ return []; }
+}
+function saveSongs(songs){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(songs));
+  markDirty();
+  scheduleCloudPush();
+}
+
+// Marca que hay cambios locales que todavía no se confirmaron guardados en la nube.
+// loadInitialData() la consulta para nunca sobreescribir una edición reciente con una
+// copia vieja de la nube si recién se recargó la página antes de que el guardado
+// automático (debounce de 1.5s) terminara.
+const DIRTY_SONGS_KEY = 'mark_chords_dirty_since';
+function markDirty(){ if (!localStorage.getItem(DIRTY_SONGS_KEY)) localStorage.setItem(DIRTY_SONGS_KEY, String(Date.now())); }
+function clearDirty(){ localStorage.removeItem(DIRTY_SONGS_KEY); }
+function isDirty(){ return !!localStorage.getItem(DIRTY_SONGS_KEY); }
+
+/* ============================================================
+   GUARDADO EN LA NUBE (repositorio de GitHub)
+   ============================================================
+   localStorage sigue siendo la copia local/offline de cada dispositivo, pero el
+   repositorio de GitHub es la fuente de la verdad compartida: cualquiera que abra
+   el link LEE ese archivo (sin necesitar llave), y solo quien tenga configurada la
+   llave de acceso puede ESCRIBIR cambios que luego todos ven. Así se deja de
+   depender del Google Sheet para el día a día — ese fue solo el insumo inicial. */
+const GITHUB_OWNER = 'markfiorente';
+const GITHUB_REPO = 'mark-chords';
+const GITHUB_BRANCH = 'main';
+const GITHUB_DATA_PATH = 'data/songs.json';
+const GITHUB_TOKEN_KEY = 'mark_chords_gh_token';
+
+function getGithubToken(){ return localStorage.getItem(GITHUB_TOKEN_KEY) || ''; }
+function setGithubToken(token){
+  if (token) localStorage.setItem(GITHUB_TOKEN_KEY, token);
+  else localStorage.removeItem(GITHUB_TOKEN_KEY);
+}
+
+// Normaliza un objeto de canción que viene de una fuente NO confiable (la copia de la
+// nube o un backup .json importado por el usuario) a los tipos esperados, para que
+// nunca llegue algo con forma inesperada (o intencionalmente maliciosa) a innerHTML.
+// Descarta entradas sin título usable.
+function coerceSong(raw){
+  if (!raw || typeof raw !== 'object') return null;
+  const str = (v) => typeof v === 'string' ? v : (v == null ? '' : String(v));
+  const title = str(raw.title).trim();
+  if (!title) return null;
+  return {
+    id: str(raw.id) || stableSongId(title, str(raw.artist)),
+    title,
+    artist: str(raw.artist),
+    key: str(raw.key) || 'C',
+    originalKey: str(raw.originalKey),
+    bpm: safeBpm(raw.bpm),
+    youtube: str(raw.youtube),
+    mp3: str(raw.mp3),
+    sheetMusic: str(raw.sheetMusic),
+    sequence: Array.isArray(raw.sequence) ? raw.sequence.filter(x => typeof x === 'string') : [],
+    annotations: str(raw.annotations),
+    chords: str(raw.chords),
+    favorite: raw.favorite === true,
+  };
+}
+
+async function loadSongsFromCloud(){
+  try {
+    const res = await fetch(`https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${GITHUB_DATA_PATH}?_=${Date.now()}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data)) return null;
+    return data.map(coerceSong).filter(Boolean);
+  } catch(e){ return null; }
+}
+
+let cloudPushTimer = null;
+let cloudPushInFlight = false;
+let cloudPushPending = false;
+
+function scheduleCloudPush(){
+  if (!getGithubToken()) return;
+  clearTimeout(cloudPushTimer);
+  cloudPushTimer = setTimeout(runCloudPush, 1500);
+}
+
+// Si ya hay un guardado en curso cuando llega otro cambio, no se lanzan dos PUT en
+// paralelo (eso es lo que causaba el error crudo tipo "Unexpected token... in JSON
+// at position 0" cuando chocaban) — se espera a que termine el actual y luego se
+// vuelve a guardar una sola vez con el estado más reciente.
+async function runCloudPush(){
+  if (cloudPushInFlight){ cloudPushPending = true; return; }
+  cloudPushInFlight = true;
+  try {
+    const sentJson = await pushSongsToCloud();
+    // Solo se limpia "dirty" si lo que hay AHORA en memoria es exactamente lo que se
+    // subió — si una edición llegó mientras el PUT estaba en curso, se queda marcado
+    // como pendiente y el próximo ciclo de guardado (ya encolado por scheduleCloudPush
+    // o por cloudPushPending) lo termina de subir.
+    if (JSON.stringify(state.songs, null, 2) === sentJson) clearDirty();
+    showToast('Guardado en la nube ✓', 'success');
+  } catch(err){
+    showToast('No se guardó en la nube: ' + err.message, 'error');
+  } finally {
+    cloudPushInFlight = false;
+    if (cloudPushPending){ cloudPushPending = false; runCloudPush(); }
+  }
+}
+
+async function safeJson(res){
+  try { return await res.json(); } catch(e){ return null; }
+}
+
+async function pushSongsToCloud(){
+  const token = getGithubToken();
+  if (!token) throw new Error('No hay llave de acceso configurada.');
+  const apiUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_DATA_PATH}`;
+
+  async function getSha(){
+    const res = await fetch(`${apiUrl}?ref=${GITHUB_BRANCH}&_=${Date.now()}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+    });
+    if (res.ok) return (await safeJson(res))?.sha || null;
+    if (res.status === 404) return null;
+    const body = await safeJson(res);
+    throw new Error(body?.message || `código ${res.status} al verificar el archivo. Revisa que la llave tenga permiso de escritura sobre este repositorio.`);
+  }
+
+  let sentJson;
+  async function putContent(sha){
+    sentJson = JSON.stringify(state.songs, null, 2); // capturado justo antes de enviar
+    const content = btoa(unescape(encodeURIComponent(sentJson)));
+    return fetch(apiUrl, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: `Actualizar repertorio (${new Date().toLocaleString('es-CO')})`,
+        content,
+        branch: GITHUB_BRANCH,
+        ...(sha ? { sha } : {}),
+      }),
+    });
+  }
+
+  let sha = await getSha();
+  let putRes = await putContent(sha);
+
+  // 409 = alguien más (u otra pestaña) guardó justo entre el GET y el PUT. Es un
+  // choque benigno y esperable con guardado automático; se reintenta una vez con
+  // el sha fresco antes de darlo por fallido.
+  if (putRes.status === 409){
+    sha = await getSha();
+    putRes = await putContent(sha);
+  }
+
+  if (!putRes.ok){
+    const errBody = await safeJson(putRes);
+    throw new Error(errBody?.message || `código ${putRes.status}`);
+  }
+  return sentJson;
+}
+
+/* ============================================================
+   SETLIST DEL DOMINGO (archivo independiente en la nube)
+   ============================================================
+   Se guarda como un archivo separado (data/setlist.json, solo un array de IDs) en vez
+   de meterlo dentro de data/songs.json — así nunca se toca la forma del archivo real
+   de canciones que ya está en producción con datos de Mark. El pipeline es una copia
+   deliberada del de canciones (no una versión compartida/genérica) para no arriesgar
+   ese código ya probado en uso real.
+   ============================================================ */
+const GITHUB_SETLIST_PATH = 'data/setlist.json';
+const SETLIST_STORAGE_KEY = 'mark_chords_setlist';
+const SETLIST_DIRTY_KEY = 'mark_chords_setlist_dirty_since';
+
+function loadSetlist(){
+  const raw = localStorage.getItem(SETLIST_STORAGE_KEY);
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter(x => typeof x === 'string') : [];
+  } catch(e){ return []; }
+}
+function markSetlistDirty(){ if (!localStorage.getItem(SETLIST_DIRTY_KEY)) localStorage.setItem(SETLIST_DIRTY_KEY, String(Date.now())); }
+function clearSetlistDirty(){ localStorage.removeItem(SETLIST_DIRTY_KEY); }
+function isSetlistDirty(){ return !!localStorage.getItem(SETLIST_DIRTY_KEY); }
+
+function saveSetlist(ids){
+  state.setlist = ids;
+  localStorage.setItem(SETLIST_STORAGE_KEY, JSON.stringify(ids));
+  markSetlistDirty();
+  scheduleSetlistCloudPush();
+}
+
+async function loadSetlistFromCloud(){
+  try {
+    const res = await fetch(`https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${GITHUB_SETLIST_PATH}?_=${Date.now()}`);
+    if (!res.ok) return null; // incluye el 404 esperado antes de que el archivo exista
+    const data = await res.json();
+    return Array.isArray(data) ? data.filter(x => typeof x === 'string') : null;
+  } catch(e){ return null; }
+}
+
+let setlistPushTimer = null;
+let setlistPushInFlight = false;
+let setlistPushPending = false;
+
+function scheduleSetlistCloudPush(){
+  if (!getGithubToken()) return;
+  clearTimeout(setlistPushTimer);
+  setlistPushTimer = setTimeout(runSetlistCloudPush, 1500);
+}
+
+async function runSetlistCloudPush(){
+  if (setlistPushInFlight){ setlistPushPending = true; return; }
+  setlistPushInFlight = true;
+  try {
+    const sentJson = await pushSetlistToCloud();
+    if (JSON.stringify(state.setlist, null, 2) === sentJson) clearSetlistDirty();
+  } catch(err){
+    showToast('No se guardó el setlist en la nube: ' + err.message, 'error');
+  } finally {
+    setlistPushInFlight = false;
+    if (setlistPushPending){ setlistPushPending = false; runSetlistCloudPush(); }
+  }
+}
+
+async function pushSetlistToCloud(){
+  const token = getGithubToken();
+  if (!token) throw new Error('No hay llave de acceso configurada.');
+  const apiUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_SETLIST_PATH}`;
+
+  async function getSha(){
+    const res = await fetch(`${apiUrl}?ref=${GITHUB_BRANCH}&_=${Date.now()}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+    });
+    if (res.ok) return (await safeJson(res))?.sha || null;
+    if (res.status === 404) return null;
+    const body = await safeJson(res);
+    throw new Error(body?.message || `código ${res.status} al verificar el archivo del setlist.`);
+  }
+
+  let sentJson;
+  async function putContent(sha){
+    sentJson = JSON.stringify(state.setlist, null, 2);
+    const content = btoa(unescape(encodeURIComponent(sentJson)));
+    return fetch(apiUrl, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: `Actualizar orden del set (${new Date().toLocaleString('es-CO')})`,
+        content,
+        branch: GITHUB_BRANCH,
+        ...(sha ? { sha } : {}),
+      }),
+    });
+  }
+
+  let sha = await getSha();
+  let putRes = await putContent(sha);
+  if (putRes.status === 409){
+    sha = await getSha();
+    putRes = await putContent(sha);
+  }
+  if (!putRes.ok){
+    const errBody = await safeJson(putRes);
+    throw new Error(errBody?.message || `código ${putRes.status}`);
+  }
+  return sentJson;
+}
+
+function toggleInSetlist(id){
+  const idx = state.setlist.indexOf(id);
+  saveSetlist(idx === -1 ? [...state.setlist, id] : state.setlist.filter(x => x !== id));
+  renderLibrary();
+}
+
+function slugify(s){
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+}
+function generateId(title, artist, excludeId){
+  const base = slugify(`${title}-${artist||''}`) || 'cancion';
+  let id = base, n = 1;
+  while (state.songs.some(s => s.id === id && s.id !== excludeId)) id = `${base}-${++n}`;
+  return id;
+}
+// A diferencia de generateId, no se desambigua contra state.songs: dos sincronizaciones
+// de la misma fila deben producir siempre el mismo id, para que mergeImportedSongs
+// actualice la canción existente en vez de duplicarla.
+function stableSongId(title, artist){
+  return slugify(`${title}-${artist||''}`) || 'cancion';
+}
+
+function blankSong(){
+  return { id:'', title:'', artist:'', key:'C', originalKey:'', bpm:null, youtube:'', mp3:'', sheetMusic:'', sequence:[], annotations:'', chords:'', favorite:false };
+}
+
+function addSong(song){ state.songs.push(song); saveSongs(state.songs); }
+function updateSong(id, patch){
+  const s = state.songs.find(s => s.id === id);
+  if (!s) return;
+  Object.assign(s, patch);
+  saveSongs(state.songs);
+}
+function deleteSong(id){
+  state.songs = state.songs.filter(s => s.id !== id);
+  saveSongs(state.songs);
+}
+function getSong(id){ return state.songs.find(s => s.id === id); }
+
+/* ============================================================
+   ESTADO GLOBAL + NAVEGACIÓN
+   ============================================================ */
+const state = {
+  songs: loadSongs(),
+  currentSongId: null,
+  transposeSemitones: 0,
+  targetKeyStr: 'C',
+  search: '',
+  keyFilter: '',
+  mobileView: 'library', // 'library' | 'detail' — solo controla el layout en pantallas angostas
+  detailFontSize: parseInt(localStorage.getItem(DETAIL_FONT_KEY), 10) || 17,
+  autoScroll: { active:false, rafId:null, lastTs:null },
+  setlist: loadSetlist(), // orden de canciones del set de hoy (IDs)
+  stageSequenceIds: [], // secuencia de navegación siguiente/anterior activa en Modo En Vivo
+};
+
+// A tamaño lg+ la biblioteca (sidebar) y el detalle (main) se muestran siempre
+// simultáneamente, como una plataforma; en pantallas angostas solo uno a la vez.
+function applyResponsiveLayout(){
+  const sidebar = document.getElementById('view-library');
+  const main = document.getElementById('view-detail');
+  const detailActive = state.mobileView === 'detail';
+  sidebar.classList.toggle('hidden', detailActive);
+  sidebar.classList.toggle('flex', !detailActive);
+  main.classList.toggle('hidden', !detailActive);
+  main.classList.toggle('flex', detailActive);
+}
+
+function showView(name){
+  if (name === 'stage'){
+    document.getElementById('view-stage').classList.remove('hidden');
+    return;
+  }
+  document.getElementById('view-stage').classList.add('hidden');
+  stopAutoScroll();
+  state.mobileView = name;
+  applyResponsiveLayout();
+  if (name === 'library') renderLibrary();
+}
+
+document.getElementById('btnHome').onclick = () => showView('library');
+document.getElementById('btnAddSong').onclick = () => openAddSongModal();
+document.getElementById('btnImportExcel').onclick = () => openImportExcelModal();
+document.getElementById('btnSyncSheet').onclick = () => openSyncSheetModal();
+document.getElementById('btnMore').onclick = () => openMoreModal();
+document.getElementById('searchInput').oninput = (e) => { state.search = e.target.value; renderLibrary(); };
+document.getElementById('keyFilterSelect').onchange = (e) => { state.keyFilter = e.target.value; renderLibrary(); };
+
+/* ============================================================
+   LIBRARY (SIDEBAR)
+   ============================================================ */
+// Misma lista filtrada/ordenada que se ve en la biblioteca (búsqueda + filtro de tono +
+// favoritos primero) — se reutiliza tal cual para la navegación siguiente/anterior de
+// Modo En Vivo cuando no hay un setlist activo, en vez de duplicar esta lógica.
+function getVisibleLibraryList(){
+  const q = state.search.trim().toLowerCase();
+  let list = state.songs;
+  if (q) list = list.filter(s => (s.title||'').toLowerCase().includes(q) || (s.artist||'').toLowerCase().includes(q));
+  if (state.keyFilter) list = list.filter(s => s.key === state.keyFilter);
+  return [...list].sort((a,b) => (b.favorite?1:0) - (a.favorite?1:0));
+}
+
+function renderLibrary(){
+  const listEl = document.getElementById('songList');
+  const emptyEl = document.getElementById('libraryEmpty');
+  const searchEmptyEl = document.getElementById('searchEmpty');
+  const countEl = document.getElementById('libraryCount');
+  const filterSel = document.getElementById('keyFilterSelect');
+
+  countEl.textContent = state.songs.length;
+
+  const keys = [...new Set(state.songs.map(s => s.key).filter(Boolean))].sort();
+  filterSel.innerHTML = `<option value="">Todas las tonalidades</option>` +
+    keys.map(k => `<option value="${escapeHtml(k)}" ${k===state.keyFilter?'selected':''}>${escapeHtml(k)}</option>`).join('');
+
+  if (state.songs.length === 0){
+    listEl.innerHTML = '';
+    listEl.classList.add('hidden');
+    searchEmptyEl.classList.add('hidden');
+    emptyEl.classList.remove('hidden');
+    emptyEl.classList.add('flex');
+    return;
+  }
+  emptyEl.classList.add('hidden');
+  emptyEl.classList.remove('flex');
+  listEl.classList.remove('hidden');
+
+  const list = getVisibleLibraryList();
+
+  if (list.length === 0){
+    listEl.innerHTML = '';
+    searchEmptyEl.classList.remove('hidden');
+    return;
+  }
+  searchEmptyEl.classList.add('hidden');
+
+  listEl.innerHTML = list.map(s => {
+    const active = s.id === state.currentSongId;
+    const inSetlist = state.setlist.includes(s.id);
+    const keyOk = looksLikeKey(s.key);
+    const keyBadge = keyOk
+      ? `<span class="shrink-0 max-w-[92px] truncate text-right text-[10px] font-mono font-bold text-orange-400 bg-orange-500/10 rounded px-1.5 py-0.5 leading-tight">${escapeHtml(s.key)}</span>`
+      : `<span class="shrink-0 text-right text-[10px] font-bold text-neutral-600 bg-neutral-800 rounded px-1.5 py-0.5 leading-tight" title="${escapeHtml(s.key||'')}"><i class="fa-solid fa-circle-question"></i></span>`;
+    return `
+    <div onclick="openSong('${s.id}')" tabindex="0" role="button" class="fade-in w-full text-left px-3 py-2.5 rounded-lg mb-1 transition-colors border cursor-pointer ${active ? 'bg-orange-500/10 border-orange-500/40' : 'border-transparent hover:bg-neutral-900'}">
+      <div class="flex items-start justify-between gap-2">
+        <div class="min-w-0">
+          <div class="font-semibold text-sm truncate flex items-center gap-1.5 text-white">
+            ${s.favorite ? '<i class="fa-solid fa-star text-orange-400 text-[10px] shrink-0"></i>' : ''}
+            <span class="truncate">${escapeHtml(s.title || 'Sin título')}</span>
+          </div>
+          <div class="text-xs text-neutral-500 truncate">${escapeHtml(s.artist || '—')}</div>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button onclick="event.stopPropagation(); toggleInSetlist('${s.id}')" title="${inSetlist ? 'Quitar del setlist de hoy' : 'Agregar al setlist de hoy'}" class="w-6 h-6 rounded flex items-center justify-center ${inSetlist ? 'text-orange-400' : 'text-neutral-600 hover:text-neutral-400'}"><i class="fa-solid ${inSetlist ? 'fa-calendar-check' : 'fa-calendar-plus'} text-xs"></i></button>
+          ${keyBadge}
+        </div>
+      </div>
+      <div class="flex items-center gap-2 mt-1.5 text-[11px] text-neutral-600">
+        ${safeBpm(s.bpm) ? `<span><i class="fa-solid fa-gauge-high"></i> ${safeBpm(s.bpm)}</span>` : ''}
+        ${s.mp3 ? `<span><i class="fa-solid fa-headphones"></i></span>` : ''}
+        ${s.youtube ? `<span><i class="fa-brands fa-youtube"></i></span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ============================================================
+   MAIN / DETAIL PANE
+   ============================================================ */
+function openSong(id){
+  state.currentSongId = id;
+  state.transposeSemitones = 0;
+  const s = getSong(id);
+  state.targetKeyStr = s ? s.key : 'C';
+  state.mobileView = 'detail';
+  applyResponsiveLayout();
+  renderLibrary();
+  renderMain();
+}
+
+// A diferencia de transposeNote (que solo entiende notas sueltas como "C" o "Bb"),
+// el tono guardado de una canción puede traer calidad (ej. "C#m") o texto ajeno a
+// una nota real. transposeChord ya sabe separar raíz+calidad igual que con los
+// acordes del cifrado, así que reusarlo aquí mantiene "Tono actual" sincronizado
+// con lo que realmente se transporta en el cifrado.
+function parseKeyRoot(keyStr){
+  const m = CHORD_TOKEN_REGEX.exec(normalizeChordUnicode(String(keyStr||'').trim()));
+  if (!m || m[1]) return null;
+  return m[2] + (m[3]||'');
+}
+// Algunas hojas de cálculo guardan en la celda de Tonalidad una etiqueta descriptiva
+// (con título/artista) en vez del tono cuando esa celda enlaza a una partitura. Esto
+// distingue un tono real ("D", "C#m") de ese tipo de texto para no mostrarlo como
+// si fuera un tono editable/transportable.
+function looksLikeKey(keyStr){
+  return CHORD_TOKEN_REGEX.test(normalizeChordUnicode(String(keyStr||'').trim()));
+}
+// El <select> de tono destino solo lista los 12 tonos mayores de KEY_OPTIONS (siempre
+// en bemol). Un tono con calidad ("Am") o deletreado con sostenido ("C#") no calza con
+// ninguna <option> tal cual, dejando el selector visualmente vacío. Esto normaliza solo
+// la raíz (ignora la calidad) a la misma convención de bemoles que usa KEY_OPTIONS.
+function keyRootForSelect(fullKeyStr){
+  const root = parseKeyRoot(fullKeyStr);
+  return root ? transposeNote(root, 0, /*useFlats*/ true) : null;
+}
+function currentTargetKey(){
+  const s = getSong(state.currentSongId);
+  if (!s) return 'C';
+  return transposeChord(s.key, state.transposeSemitones, state.targetKeyStr);
+}
+
+function toggleFavorite(id){
+  const s = getSong(id);
+  if (!s) return;
+  updateSong(id, { favorite: !s.favorite });
+  renderMain();
+  renderLibrary();
+}
+
+function renderMain(){
+  const s = getSong(state.currentSongId);
+  const empty = document.getElementById('mainEmpty');
+  const content = document.getElementById('mainContent');
+  const stageBtn = document.getElementById('btnStageHeader');
+
+  if (!s){
+    empty.classList.remove('hidden'); empty.classList.add('flex');
+    content.classList.add('hidden'); content.classList.remove('flex');
+    stageBtn.disabled = true;
+    return;
+  }
+  empty.classList.add('hidden'); empty.classList.remove('flex');
+  content.classList.remove('hidden'); content.classList.add('flex');
+  stageBtn.disabled = false;
+
+  document.getElementById('dTitle').textContent = s.title || 'Sin título';
+  document.getElementById('dArtist').textContent = s.artist || '';
+
+  const favBtn = document.getElementById('btnFavorite');
+  favBtn.classList.toggle('text-orange-400', !!s.favorite);
+  favBtn.classList.toggle('text-neutral-400', !s.favorite);
+
+  const keyIsValid = looksLikeKey(s.key);
+  const sheetMusicIsUrl = /^https?:\/\//i.test(s.sheetMusic || '');
+  const meta = document.getElementById('dMeta');
+  meta.innerHTML = [
+    safeBpm(s.bpm) ? `<span class="text-xs bg-neutral-800 rounded-full px-2.5 py-1 text-neutral-300"><i class="fa-solid fa-gauge-high mr-1"></i>${safeBpm(s.bpm)} BPM</span>` : '',
+    s.originalKey ? `<span class="text-xs bg-neutral-800 rounded-full px-2.5 py-1 text-neutral-300">Tono original: ${escapeHtml(s.originalKey)}</span>` : '',
+    !keyIsValid
+      ? (s.key ? `<span class="text-xs bg-neutral-800 rounded-full px-2.5 py-1 text-neutral-500 max-w-[220px] truncate inline-block align-bottom" title="${escapeHtml(s.key)}"><i class="fa-solid fa-circle-question mr-1"></i>Tono sin definir (celda: "${escapeHtml(s.key)}")</span>` : `<span class="text-xs bg-neutral-800 rounded-full px-2.5 py-1 text-neutral-500">Tono sin definir</span>`)
+      : '',
+    sheetMusicIsUrl
+      ? `<a href="${escapeHtml(s.sheetMusic)}" target="_blank" class="text-xs bg-orange-500/10 border border-orange-500/30 text-orange-400 rounded-full px-2.5 py-1 hover:bg-orange-500/20"><i class="fa-solid fa-file-lines mr-1"></i>Ver partitura</a>`
+      : (s.sheetMusic ? `<span class="text-xs bg-neutral-800 rounded-full px-2.5 py-1 text-neutral-500 max-w-[220px] truncate inline-block align-bottom" title="${escapeHtml(s.sheetMusic)}"><i class="fa-solid fa-file-lines mr-1"></i>Partitura: ${escapeHtml(s.sheetMusic)}</span>` : ''),
+  ].join('');
+
+  const dCurrentKeyEl = document.getElementById('dCurrentKey');
+  if (keyIsValid){
+    dCurrentKeyEl.textContent = currentTargetKey();
+    dCurrentKeyEl.title = '';
+    dCurrentKeyEl.classList.remove('text-neutral-600','text-sm');
+    dCurrentKeyEl.classList.add('text-orange-400','text-lg');
+  } else {
+    dCurrentKeyEl.textContent = '—';
+    dCurrentKeyEl.title = s.key ? `Celda de tonalidad: "${s.key}" (no es un tono editable)` : 'Sin tono definido';
+    dCurrentKeyEl.classList.remove('text-orange-400','text-lg');
+    dCurrentKeyEl.classList.add('text-neutral-600','text-sm');
+  }
+
+  const sel = document.getElementById('dTargetKey');
+  sel.innerHTML = KEY_OPTIONS.map(k => `<option value="${k}">${k}</option>`).join('');
+  // currentTargetKey() puede traer calidad ("Am") o venir deletreado con sostenidos,
+  // ninguno de los cuales existe como <option> en KEY_OPTIONS (solo mayores en bemol).
+  // Se normaliza solo la raíz para que el selector siempre tenga una opción marcada,
+  // aunque la etiqueta grande "Tono actual" siga mostrando el valor completo ("Am").
+  sel.value = keyRootForSelect(currentTargetKey()) || currentTargetKey();
+  sel.onchange = () => {
+    const s2 = getSong(state.currentSongId);
+    const origRoot = parseKeyRoot(s2.key);
+    const origIdx = origRoot ? (CHROMATIC_SHARP.indexOf(origRoot) !== -1 ? CHROMATIC_SHARP.indexOf(origRoot) : CHROMATIC_FLAT.indexOf(origRoot)) : 0;
+    const targetVal = sel.value;
+    const targetIdx = CHROMATIC_SHARP.indexOf(targetVal) !== -1 ? CHROMATIC_SHARP.indexOf(targetVal) : CHROMATIC_FLAT.indexOf(targetVal);
+    state.transposeSemitones = ((targetIdx - origIdx) % 12 + 12) % 12;
+    state.targetKeyStr = targetVal;
+    renderMain();
+  };
+
+  document.getElementById('dFontSizeLabel').textContent = state.detailFontSize + 'px';
+
+  const chart = document.getElementById('dChart');
+  const chartEmpty = document.getElementById('dChartEmpty');
+  const html = renderChordChart(s.chords, state.transposeSemitones, currentTargetKey());
+  chart.innerHTML = html;
+  chart.style.fontSize = state.detailFontSize + 'px';
+  chart.classList.toggle('hidden', !html);
+  chartEmpty.classList.toggle('hidden', !!html);
+
+  document.getElementById('dMp3Area').innerHTML = renderMp3Player(s);
+  document.getElementById('dYoutubeArea').innerHTML = renderYoutubeArea(s);
+
+  const seqWrap = document.getElementById('dSequence');
+  seqWrap.innerHTML = (s.sequence && s.sequence.length)
+    ? s.sequence.map(p => `<span class="text-xs font-semibold bg-neutral-800 rounded-md px-2 py-1 text-neutral-300">${escapeHtml(p)}</span>`).join('')
+    : `<span class="text-sm text-neutral-600">Sin estructura definida.</span>`;
+
+  document.getElementById('dAnnotations').textContent = s.annotations || 'Sin anotaciones.';
+}
+
+function stepTranspose(delta){
+  state.transposeSemitones += delta;
+  const s = getSong(state.currentSongId);
+  state.targetKeyStr = transposeChord(s.key, state.transposeSemitones, state.targetKeyStr);
+  renderMain();
+}
+function resetTranspose(){
+  const s = getSong(state.currentSongId);
+  state.transposeSemitones = 0;
+  state.targetKeyStr = s.key;
+  renderMain();
+}
+function detailFontStep(delta){
+  state.detailFontSize = Math.min(28, Math.max(13, state.detailFontSize + delta));
+  localStorage.setItem(DETAIL_FONT_KEY, state.detailFontSize);
+  renderMain();
+}
+
+function handleDeleteSong(id){
+  const s = getSong(id);
+  if (!s) return;
+  if (!confirm(`¿Eliminar "${s.title}"? Esta acción no se puede deshacer.`)) return;
+  deleteSong(id);
+  if (state.currentSongId === id) state.currentSongId = null;
+  state.mobileView = 'library';
+  applyResponsiveLayout();
+  renderLibrary();
+  renderMain();
+}
+
+/* ============================================================
+   MP3 PLAYER
+   ============================================================ */
+function resolveMp3Url(raw){
+  if (!raw) return { url:null, warn:'empty' };
+  const drive = raw.match(/drive\.google\.com\/file\/d\/([\w-]+)/);
+  if (drive) return { url:`https://drive.google.com/uc?export=download&id=${drive[1]}`, warn:'drive', driveId: drive[1] };
+  if (/^https?:\/\//i.test(raw)) return { url: raw, warn:null };
+  return { url:null, warn:'unresolvable', label: raw };
+}
+
+function renderMp3Player(s){
+  const r = resolveMp3Url(s.mp3);
+  if (r.warn === 'empty'){
+    return `<p class="text-sm text-neutral-600">Sin audio de secuencia asignado.</p>
+      <label class="mt-2 inline-flex items-center gap-2 text-xs text-orange-400 cursor-pointer hover:underline">
+        <i class="fa-solid fa-upload"></i> Adjuntar archivo local para este ensayo
+        <input type="file" accept="audio/*" class="hidden" onchange="attachLocalAudio(this)">
+      </label>`;
+  }
+  let warnHtml = '';
+  if (r.warn === 'unresolvable'){
+    warnHtml = `<p class="text-xs text-amber-500 mb-2"><i class="fa-solid fa-triangle-exclamation"></i> "${escapeHtml(r.label)}" no es un link reproducible directamente.</p>
+      <label class="inline-flex items-center gap-2 text-xs text-orange-400 cursor-pointer hover:underline mb-2">
+        <i class="fa-solid fa-upload"></i> Adjuntar archivo local para este ensayo
+        <input type="file" accept="audio/*" class="hidden" onchange="attachLocalAudio(this)">
+      </label>
+      <div id="localAudioWrap"></div>`;
+    return warnHtml;
+  }
+  if (r.warn === 'drive'){
+    return `
+      <div id="driveAudioWrap">
+        <audio id="mp3Player" controls preload="none" class="w-full" src="${escapeHtml(r.url)}" onerror="fallbackToDriveEmbed('${r.driveId}')"></audio>
+      </div>
+      <p class="text-xs text-neutral-600 mt-2">Audio de Google Drive — si no reproduce, <a href="https://drive.google.com/file/d/${r.driveId}/view" target="_blank" class="text-orange-400 underline">ábrelo directamente</a>.</p>
+      <div id="mp3RateButtons" class="flex gap-2 mt-2">
+        ${[0.75,1.0,1.25].map(rate => `<button onclick="setPlaybackRate(${rate}, this)" data-rate="${rate}" class="rate-btn px-2.5 py-1 rounded-md text-xs font-bold ${rate===1.0?'bg-orange-500 text-black':'bg-neutral-800 hover:bg-neutral-700 text-neutral-300'}">${rate}x</button>`).join('')}
+      </div>`;
+  }
+  return `
+    <audio id="mp3Player" controls preload="none" class="w-full" src="${escapeHtml(r.url)}"></audio>
+    <div id="mp3RateButtons" class="flex gap-2 mt-2">
+      ${[0.75,1.0,1.25].map(rate => `<button onclick="setPlaybackRate(${rate}, this)" data-rate="${rate}" class="rate-btn px-2.5 py-1 rounded-md text-xs font-bold ${rate===1.0?'bg-orange-500 text-black':'bg-neutral-800 hover:bg-neutral-700 text-neutral-300'}">${rate}x</button>`).join('')}
+    </div>`;
+}
+// Cuando el link directo de Drive falla (archivo grande sin token de descarga,
+// o Drive devuelve la página de "no se puede escanear por virus" en vez del audio),
+// se reemplaza por el reproductor embebido de Drive, que sí funciona siempre pero
+// no expone su <audio> interno, así que el control de velocidad deja de aplicar.
+function fallbackToDriveEmbed(id){
+  const wrap = document.getElementById('driveAudioWrap');
+  if (!wrap || wrap.dataset.fallenBack) return;
+  wrap.dataset.fallenBack = '1';
+  wrap.innerHTML = `<iframe src="https://drive.google.com/file/d/${id}/preview" class="w-full rounded-lg" height="80" allow="autoplay" style="border:0"></iframe>`;
+  const rateButtons = document.getElementById('mp3RateButtons');
+  if (rateButtons) rateButtons.classList.add('hidden');
+}
+function setPlaybackRate(rate, btn){
+  const audio = document.getElementById('mp3Player');
+  if (audio) audio.playbackRate = rate;
+  document.querySelectorAll('.rate-btn').forEach(b => { b.classList.remove('bg-orange-500','text-black'); b.classList.add('bg-neutral-800','text-neutral-300'); });
+  btn.classList.remove('bg-neutral-800','text-neutral-300');
+  btn.classList.add('bg-orange-500','text-black');
+}
+function attachLocalAudio(input){
+  const file = input.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  const player = document.createElement('div');
+  player.innerHTML = `
+    <audio id="mp3Player" controls preload="none" class="w-full mt-1" src="${url}"></audio>
+    <div class="flex gap-2 mt-2">
+      ${[0.75,1.0,1.25].map(rate => `<button onclick="setPlaybackRate(${rate}, this)" data-rate="${rate}" class="rate-btn px-2.5 py-1 rounded-md text-xs font-bold ${rate===1.0?'bg-orange-500 text-black':'bg-neutral-800 hover:bg-neutral-700 text-neutral-300'}">${rate}x</button>`).join('')}
+    </div>`;
+  const target = document.getElementById('localAudioWrap') || document.getElementById('dMp3Area');
+  target.appendChild(player);
+}
+
+/* ============================================================
+   YOUTUBE
+   ============================================================ */
+function extractYouTubeId(url){
+  if (!url) return null;
+  const m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/);
+  return m ? m[1] : null;
+}
+function renderYoutubeArea(s){
+  if (!s.youtube) return `<p class="text-sm text-neutral-600">Sin video de referencia.</p>`;
+  const id = extractYouTubeId(s.youtube);
+  if (!id){
+    // s.youtube puede venir de una celda de Excel/Sheet editada por un tercero — sin este
+    // filtro de esquema, un valor "javascript:..." se renderizaría como link clickeable
+    // capaz de ejecutar código en la página (y robar la llave de GitHub de localStorage).
+    if (/^https?:\/\//i.test(s.youtube)){
+      return `<a href="${escapeHtml(s.youtube)}" target="_blank" rel="noopener noreferrer" class="text-orange-400 text-sm underline flex items-center gap-2"><i class="fa-brands fa-youtube"></i> Abrir en YouTube ↗</a>`;
+    }
+    return `<p class="text-sm text-neutral-500 break-words">${escapeHtml(s.youtube)}</p>`;
+  }
+  return `<div id="ytFacade" class="relative rounded-lg overflow-hidden cursor-pointer group aspect-video bg-black" onclick="loadYoutubeIframe('${id}')">
+      <img src="https://img.youtube.com/vi/${id}/hqdefault.jpg" class="w-full h-full object-cover" alt="Miniatura de YouTube">
+      <div class="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/40">
+        <div class="w-14 h-14 rounded-full bg-red-600 flex items-center justify-center text-white text-xl"><i class="fa-solid fa-play ml-1"></i></div>
+      </div>
+    </div>`;
+}
+function loadYoutubeIframe(id){
+  document.getElementById('ytFacade').outerHTML = `<div class="aspect-video rounded-lg overflow-hidden"><iframe class="w-full h-full" src="https://www.youtube.com/embed/${id}?autoplay=1" title="YouTube" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`;
+}
+
+/* ============================================================
+   STAGE MODE
+   ============================================================ */
+// Determina el orden de navegación siguiente/anterior: si el setlist de hoy no está
+// vacío y contiene la canción actual, se navega en el orden del setlist; si no, se
+// navega en la lista de la biblioteca tal como está filtrada/buscada en pantalla.
+// Así abrir una canción que no está en el setlist de hoy sigue navegando la biblioteca
+// con normalidad en vez de quedar atado a un setlist que no la incluye.
+function getStageSequenceIds(){
+  const s = getSong(state.currentSongId);
+  if (s && state.setlist.length && state.setlist.includes(s.id)){
+    return state.setlist.filter(id => getSong(id)); // descarta ids huérfanos (canción borrada)
+  }
+  return getVisibleLibraryList().map(x => x.id);
+}
+
+function enterStageMode(){
+  const s = getSong(state.currentSongId);
+  if (!s) return;
+  state.stageSequenceIds = getStageSequenceIds();
+  renderStageSong(s);
+  showView('stage');
+}
+function exitStageMode(){ showView('detail'); }
+
+function renderStageSong(s){
+  stopAutoScroll();
+  document.getElementById('sTitle').textContent = s.title || 'Sin título';
+  const ids = state.stageSequenceIds || [];
+  const pos = ids.indexOf(s.id);
+  const posLabel = (pos !== -1 && ids.length > 1) ? ` · ${pos+1}/${ids.length}` : '';
+  document.getElementById('sSubtitle').textContent = `${s.artist||''} · Tono ${currentTargetKey()}${posLabel}`;
+  document.getElementById('sChart').innerHTML = renderChordChart(s.chords, state.transposeSemitones, currentTargetKey()) || `<p class="text-neutral-600 text-center mt-10">Sin cifrado.</p>`;
+  const savedFont = localStorage.getItem(STAGE_FONT_KEY);
+  document.documentElement.style.setProperty('--stage-font', (savedFont ? savedFont : 32) + 'px');
+  document.getElementById('stageScrollArea').scrollTop = 0;
+  document.querySelectorAll('.stage-nav-btn').forEach(b => b.classList.toggle('invisible', ids.length < 2));
+
+  const sections = extractSectionLabels(s.chords);
+  const jumpSel = document.getElementById('sSectionJump');
+  jumpSel.classList.toggle('hidden', sections.length === 0);
+  jumpSel.innerHTML = `<option value="">Ir a sección...</option>` +
+    sections.map((sec, i) => `<option value="${i}">${escapeHtml(sec.label)}</option>`).join('');
+  jumpSel.selectedIndex = 0;
+}
+
+function stageGoTo(delta){
+  const ids = state.stageSequenceIds || [];
+  if (ids.length < 2) return;
+  const curIdx = ids.indexOf(state.currentSongId);
+  if (curIdx === -1) return;
+  const nextId = ids[((curIdx + delta) % ids.length + ids.length) % ids.length]; // wrap-around
+  const nextSong = getSong(nextId);
+  if (!nextSong) return;
+  state.currentSongId = nextId;
+  state.transposeSemitones = 0;
+  state.targetKeyStr = nextSong.key;
+  renderStageSong(nextSong);
+  renderLibrary(); // mantiene resaltada la canción correcta al salir de Modo En Vivo
+}
+function stageNext(){ stageGoTo(1); }
+function stagePrev(){ stageGoTo(-1); }
+
+// Flechas del teclado para navegar mientras Modo En Vivo está abierto — útil con un
+// pedal Bluetooth de cambio de página conectado como teclado.
+document.addEventListener('keydown', (e) => {
+  if (document.getElementById('view-stage').classList.contains('hidden')) return;
+  if (e.key === 'ArrowRight') stageNext();
+  else if (e.key === 'ArrowLeft') stagePrev();
+});
+
+// Tocar un encabezado de sección salta ahí — listener delegado sobre el contenedor
+// (Modo En Vivo nunca se destruye, solo se oculta, así que basta registrarlo una vez).
+document.getElementById('stageScrollArea').addEventListener('click', (e) => {
+  const header = e.target.closest('.section-header');
+  if (header) header.scrollIntoView({ behavior:'smooth', block:'start' });
+});
+document.getElementById('sSectionJump').addEventListener('change', (e) => {
+  const idx = parseInt(e.target.value, 10);
+  e.target.selectedIndex = 0;
+  if (Number.isNaN(idx)) return;
+  const headers = document.querySelectorAll('#sChart .section-header');
+  if (headers[idx]) headers[idx].scrollIntoView({ behavior:'smooth', block:'start' });
+});
+
+function stageFontStep(delta){
+  const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-font')) || 32;
+  const next = Math.min(64, Math.max(18, cur + delta));
+  document.documentElement.style.setProperty('--stage-font', next + 'px');
+  localStorage.setItem(STAGE_FONT_KEY, next);
+}
+
+const scrollSpeedInput = document.getElementById('scrollSpeed');
+scrollSpeedInput.oninput = () => { document.getElementById('scrollSpeedLabel').textContent = scrollSpeedInput.value; };
+
+function toggleAutoScroll(){
+  state.autoScroll.active ? stopAutoScroll() : startAutoScroll();
+}
+function startAutoScroll(){
+  state.autoScroll.active = true;
+  state.autoScroll.lastTs = null;
+  document.getElementById('autoScrollIcon').className = 'fa-solid fa-pause';
+  const el = document.getElementById('stageScrollArea');
+  state.autoScroll.rafId = requestAnimationFrame(ts => scrollTick(ts, el));
+}
+function stopAutoScroll(){
+  state.autoScroll.active = false;
+  if (state.autoScroll.rafId) cancelAnimationFrame(state.autoScroll.rafId);
+  const icon = document.getElementById('autoScrollIcon');
+  if (icon) icon.className = 'fa-solid fa-play';
+}
+function scrollTick(ts, el){
+  if (!state.autoScroll.active) return;
+  if (state.autoScroll.lastTs == null) state.autoScroll.lastTs = ts;
+  const dt = ts - state.autoScroll.lastTs;
+  state.autoScroll.lastTs = ts;
+  const speed = parseFloat(scrollSpeedInput.value);
+  const pxPerSecond = speed * 12;
+  el.scrollTop += pxPerSecond * (dt / 1000);
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 2){ stopAutoScroll(); return; }
+  state.autoScroll.rafId = requestAnimationFrame(t => scrollTick(t, el));
+}
+
+/* ============================================================
+   MODALES (helper genérico)
+   ============================================================ */
+function openModal(innerHtml, opts){
+  opts = opts || {};
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80" id="modalBackdrop">
+      <div class="bg-neutral-900 border border-neutral-800 rounded-2xl w-full ${opts.wide?'max-w-2xl':'max-w-md'} max-h-[90vh] overflow-y-auto fade-in">
+        ${innerHtml}
+      </div>
+    </div>`;
+  document.getElementById('modalBackdrop').addEventListener('click', (e) => {
+    if (e.target.id === 'modalBackdrop') closeModal();
+  });
+}
+function closeModal(){ document.getElementById('modalRoot').innerHTML = ''; }
+
+function showToast(message, type){
+  const root = document.getElementById('toastRoot');
+  const el = document.createElement('div');
+  const colors = type === 'error'
+    ? 'bg-red-950/95 border-red-800 text-red-200'
+    : type === 'success'
+      ? 'bg-neutral-900/95 border-green-700 text-green-300'
+      : 'bg-neutral-900/95 border-neutral-700 text-neutral-200';
+  el.className = `fade-in px-4 py-2 rounded-lg border text-sm shadow-lg ${colors}`;
+  el.textContent = message;
+  root.appendChild(el);
+  setTimeout(() => {
+    el.style.transition = 'opacity .3s';
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 300);
+  }, 3000);
+}
+
+function openMoreModal(){
+  const hasToken = !!getGithubToken();
+  openModal(`
+    <div class="p-5">
+      <h2 class="text-lg font-bold mb-4 text-white">Más opciones</h2>
+      <div class="space-y-2">
+        <button onclick="closeModal(); openCloudSettingsModal();" class="w-full text-left px-4 py-3 rounded-lg bg-neutral-800 hover:bg-neutral-700 flex items-center gap-3">
+          <i class="fa-solid fa-cloud w-4 ${hasToken ? 'text-green-400' : 'text-orange-400'}"></i>
+          <span class="flex-1">Guardado en la nube</span>
+          <span class="text-[10px] font-bold uppercase ${hasToken ? 'text-green-400' : 'text-neutral-500'}">${hasToken ? 'Activo' : 'Sin configurar'}</span>
+        </button>
+        <button onclick="closeModal(); exportBackup();" class="w-full text-left px-4 py-3 rounded-lg bg-neutral-800 hover:bg-neutral-700 flex items-center gap-3"><i class="fa-solid fa-download w-4 text-orange-400"></i> Exportar backup (.json)</button>
+        <button onclick="closeModal(); openImportBackupModal();" class="w-full text-left px-4 py-3 rounded-lg bg-neutral-800 hover:bg-neutral-700 flex items-center gap-3"><i class="fa-solid fa-upload w-4 text-orange-400"></i> Restaurar backup (.json)</button>
+      </div>
+      <button onclick="closeModal()" class="w-full mt-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm">Cerrar</button>
+    </div>
+  `);
+}
+
+function openCloudSettingsModal(){
+  const hasToken = !!getGithubToken();
+  openModal(`
+    <div class="p-5">
+      <h2 class="text-lg font-bold mb-2 text-white">Guardado en la nube</h2>
+      <p class="text-sm text-neutral-500 mb-3">Con esto configurado, cada cambio que hagas (cifrados, canciones, favoritos) se guarda solo en el repositorio de GitHub y aparece para cualquiera que abra el link — sin que tengas que tocar el Google Sheet nunca más.</p>
+      <ol class="text-xs text-neutral-400 list-decimal list-inside space-y-1.5 mb-4">
+        <li>Ve a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" class="text-orange-400 underline">github.com/settings/personal-access-tokens/new</a></li>
+        <li>En "Repository access" elige "Only select repositories" → selecciona <b class="text-neutral-200">mark-chords</b></li>
+        <li>En "Permissions → Repository permissions" busca <b class="text-neutral-200">Contents</b> y ponlo en <b class="text-neutral-200">Read and write</b></li>
+        <li>Dale "Generate token" y copia la llave (empieza con "github_pat_...")</li>
+      </ol>
+      <label class="text-xs text-neutral-500">Llave de acceso</label>
+      <input id="ghTokenInput" type="password" value="${hasToken ? '' : ''}" placeholder="${hasToken ? 'Ya hay una llave guardada en este dispositivo' : 'github_pat_...'}" class="w-full mt-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm mono focus:outline-none focus:ring-1 focus:ring-orange-500/60">
+      <div id="ghTokenStatus" class="text-sm mt-3"></div>
+      <div class="flex gap-2 mt-4">
+        <button onclick="closeModal()" class="flex-1 py-2.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm font-semibold">Cerrar</button>
+        <button id="btnSaveToken" onclick="handleSaveGithubToken()" class="flex-1 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-black text-sm font-bold">Guardar y probar</button>
+      </div>
+      ${hasToken ? `<button onclick="setGithubToken(''); closeModal(); showToast('Llave eliminada de este dispositivo', 'info');" class="w-full mt-2 py-2 rounded-lg bg-neutral-800/50 hover:bg-red-900/40 text-red-400 text-xs">Quitar llave de este dispositivo</button>` : ''}
+    </div>
+  `, { wide:true });
+}
+
+async function handleSaveGithubToken(){
+  const input = document.getElementById('ghTokenInput');
+  const statusEl = document.getElementById('ghTokenStatus');
+  const btn = document.getElementById('btnSaveToken');
+  const val = input.value.trim();
+  if (!val){ statusEl.innerHTML = '<span class="text-red-400">Pega una llave válida.</span>'; return; }
+  btn.disabled = true;
+  setGithubToken(val);
+  statusEl.innerHTML = '<span class="text-neutral-500"><i class="fa-solid fa-spinner fa-spin"></i> Probando...</span>';
+  try {
+    await pushSongsToCloud();
+    statusEl.innerHTML = '<span class="text-green-400"><i class="fa-solid fa-check"></i> ¡Listo! Ya está guardando en la nube.</span>';
+  } catch(err){
+    statusEl.innerHTML = `<span class="text-red-400">${escapeHtml(err.message)}</span>`;
+    btn.disabled = false;
+  }
+}
+
+/* ---------- Setlist de hoy ---------- */
+function openSetlistModal(){
+  const songs = state.setlist.map(id => getSong(id)).filter(Boolean);
+  // limpieza defensiva: si una canción del setlist fue borrada, se cae del setlist guardado
+  if (songs.length !== state.setlist.length) saveSetlist(songs.map(s => s.id));
+
+  openModal(`
+    <div class="p-5">
+      <h2 class="text-lg font-bold mb-1 text-white">Setlist de hoy</h2>
+      <p class="text-sm text-neutral-500 mb-4">Arma el orden de canciones para el servicio. Modo En Vivo navega en este orden cuando lo empiezas desde aquí.</p>
+      <div id="setlistItems" class="space-y-1.5 max-h-[50vh] overflow-y-auto">
+        ${songs.length ? songs.map((s, i) => `
+          <div class="flex items-center gap-2 bg-neutral-800 rounded-lg px-3 py-2">
+            <span class="text-xs text-neutral-500 w-5 shrink-0">${i+1}</span>
+            <div class="min-w-0 flex-1">
+              <div class="text-sm font-semibold text-white truncate">${escapeHtml(s.title||'Sin título')}</div>
+              <div class="text-xs text-neutral-500 truncate">${escapeHtml(s.artist||'—')}</div>
+            </div>
+            <button onclick="moveSetlistItem(${i}, -1)" ${i===0?'disabled':''} class="w-7 h-7 rounded flex items-center justify-center text-neutral-400 hover:text-orange-400 disabled:opacity-20 disabled:pointer-events-none"><i class="fa-solid fa-chevron-up text-xs"></i></button>
+            <button onclick="moveSetlistItem(${i}, 1)" ${i===songs.length-1?'disabled':''} class="w-7 h-7 rounded flex items-center justify-center text-neutral-400 hover:text-orange-400 disabled:opacity-20 disabled:pointer-events-none"><i class="fa-solid fa-chevron-down text-xs"></i></button>
+            <button onclick="removeFromSetlist('${s.id}')" class="w-7 h-7 rounded flex items-center justify-center text-neutral-500 hover:text-red-400"><i class="fa-solid fa-xmark text-xs"></i></button>
+          </div>
+        `).join('') : `<p class="text-sm text-neutral-600 text-center py-6">Vacío — toca <i class="fa-solid fa-calendar-plus"></i> junto a una canción en la biblioteca para agregarla aquí.</p>`}
+      </div>
+      <div class="flex gap-2 mt-4">
+        <button onclick="closeModal()" class="flex-1 py-2.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm font-semibold">Cerrar</button>
+        <button onclick="startLiveSetlist()" ${songs.length?'':'disabled'} class="flex-1 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-black text-sm font-bold disabled:opacity-30 disabled:pointer-events-none">Empezar Modo En Vivo</button>
+      </div>
+    </div>
+  `, { wide:true });
+}
+function moveSetlistItem(index, delta){
+  const ids = [...state.setlist];
+  const j = index + delta;
+  if (j < 0 || j >= ids.length) return;
+  [ids[index], ids[j]] = [ids[j], ids[index]];
+  saveSetlist(ids);
+  openSetlistModal();
+}
+function removeFromSetlist(id){
+  saveSetlist(state.setlist.filter(x => x !== id));
+  openSetlistModal();
+}
+function startLiveSetlist(){
+  if (!state.setlist.length) return;
+  const first = getSong(state.setlist[0]);
+  if (!first) return;
+  state.currentSongId = first.id;
+  state.transposeSemitones = 0;
+  state.targetKeyStr = first.key;
+  closeModal();
+  enterStageMode(); // detecta que la canción está en el setlist y navega en ese orden (D1)
+}
+
+/* ---------- Alta / edición manual ---------- */
+function openAddSongModal(){ renderSongFormModal(blankSong(), true); }
+function openEditSongModal(id){
+  const s = getSong(id);
+  if (!s) return;
+  renderSongFormModal(s, false);
+}
+function renderSongFormModal(song, isNew){
+  openModal(`
+    <form id="songForm" class="p-5">
+      <h2 class="text-lg font-bold mb-4 text-white">${isNew ? 'Agregar canción' : 'Editar canción'}</h2>
+      <div class="space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="col-span-2">
+            <label class="text-xs text-neutral-500">Título</label>
+            <input name="title" required value="${escapeHtml(song.title)}" class="w-full mt-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500/60">
+          </div>
+          <div class="col-span-2">
+            <label class="text-xs text-neutral-500">Artista / Ministerio</label>
+            <input name="artist" value="${escapeHtml(song.artist)}" class="w-full mt-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500/60">
+          </div>
+          <div>
+            <label class="text-xs text-neutral-500">Tono (en que tocamos)</label>
+            <select name="key" class="w-full mt-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm">
+              ${KEY_OPTIONS.map(k => `<option value="${k}" ${song.key===k?'selected':''}>${k}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="text-xs text-neutral-500">Tono original</label>
+            <input name="originalKey" value="${escapeHtml(song.originalKey||'')}" class="w-full mt-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500/60">
+          </div>
+          <div class="col-span-2">
+            <label class="text-xs text-neutral-500">BPM</label>
+            <input name="bpm" type="number" value="${song.bpm||''}" class="w-full mt-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500/60">
+          </div>
+          <div class="col-span-2">
+            <label class="text-xs text-neutral-500">YouTube (URL)</label>
+            <input name="youtube" value="${escapeHtml(song.youtube)}" class="w-full mt-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500/60">
+          </div>
+          <div class="col-span-2">
+            <label class="text-xs text-neutral-500">MP3 / Secuencia (URL)</label>
+            <input name="mp3" value="${escapeHtml(song.mp3)}" class="w-full mt-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500/60">
+          </div>
+          <div class="col-span-2">
+            <label class="text-xs text-neutral-500">Partitura (URL)</label>
+            <input name="sheetMusic" value="${escapeHtml(song.sheetMusic||'')}" class="w-full mt-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500/60">
+          </div>
+          <div class="col-span-2">
+            <label class="text-xs text-neutral-500">Estructura (separada por comas)</label>
+            <input name="sequence" value="${escapeHtml((song.sequence||[]).join(', '))}" placeholder="INTRO, VERSO 1, CORO, PUENTE" class="w-full mt-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500/60">
+          </div>
+          <div class="col-span-2">
+            <label class="text-xs text-neutral-500">Anotaciones de teclado</label>
+            <textarea name="annotations" rows="2" class="w-full mt-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500/60">${escapeHtml(song.annotations)}</textarea>
+          </div>
+          <div class="col-span-2">
+            <label class="text-xs text-neutral-500">Cifrado (usa [SECCIÓN] para encabezados)</label>
+            <textarea name="chords" rows="8" class="w-full mt-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm mono focus:outline-none focus:ring-1 focus:ring-orange-500/60">${escapeHtml(song.chords)}</textarea>
+          </div>
+        </div>
+      </div>
+      <div class="flex gap-2 mt-5">
+        <button type="button" onclick="closeModal()" class="flex-1 py-2.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm font-semibold">Cancelar</button>
+        <button type="submit" class="flex-1 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-black text-sm font-bold">${isNew ? 'Agregar' : 'Guardar cambios'}</button>
+      </div>
+    </form>
+  `, { wide:true });
+
+  document.getElementById('songForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const patch = {
+      title: fd.get('title').trim(),
+      artist: fd.get('artist').trim(),
+      key: fd.get('key'),
+      originalKey: fd.get('originalKey').trim(),
+      bpm: fd.get('bpm') ? parseInt(fd.get('bpm'),10) : null,
+      youtube: fd.get('youtube').trim(),
+      mp3: fd.get('mp3').trim(),
+      sheetMusic: fd.get('sheetMusic').trim(),
+      sequence: fd.get('sequence').split(',').map(x=>x.trim()).filter(Boolean),
+      annotations: fd.get('annotations').trim(),
+      chords: fd.get('chords'),
+    };
+    if (isNew){
+      patch.id = generateId(patch.title, patch.artist);
+      patch.favorite = false;
+      addSong(patch);
+      closeModal();
+      openSong(patch.id);
+    } else {
+      updateSong(song.id, patch);
+      closeModal();
+      if (state.currentSongId === song.id) renderMain();
+      renderLibrary();
+    }
+  });
+}
+
+/* ============================================================
+   IMPORTACIÓN EXCEL / CSV (pipeline compartido)
+   ============================================================ */
+// originalKey debe ir ANTES que key: ambos comparten el alias genérico "tonalidad",
+// así que si "key" se revisara primero se quedaría con la columna "Tonalidad original"
+// por ese alias genérico antes de que originalKey tuviera oportunidad de reclamarla.
+const FIELD_ALIASES = {
+  title:       ['titulo','song','nombre','cancion'],
+  artist:      ['artista','ministerio','artist','cantante / banda','cantante','banda'],
+  originalKey: ['tonalidad original','tono original'],
+  key:         ['tonalidad en que tocamos','tono en que tocamos','tono','key','tonalidad'],
+  bpm:         ['bpm','tempo'],
+  youtube:     ['youtube','link','video'],
+  mp3:         ['mp3','audio','secuencia'],
+  sheetMusic:  ['partitura','score'],
+  sequence:    ['estructura','secuencia texto','orden'],
+  annotations: ['anotaciones','notas','teclado'],
+  chords:      ['cifrado','acordes','chords'],
+};
+function normalizeHeader(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim(); }
+
+function detectHeaderRow(rows){
+  let best = { idx:0, score:0 };
+  for (let i=0; i<Math.min(5, rows.length); i++){
+    const row = rows[i] || [];
+    const score = row.filter(cell => {
+      const h = normalizeHeader(cell);
+      if (!h) return false;
+      return Object.values(FIELD_ALIASES).some(list => list.some(a => h.includes(a)));
+    }).length;
+    if (score > best.score) best = { idx:i, score };
+  }
+  return best.score >= 2 ? best.idx : 0;
+}
+
+function buildColumnMap(headerRow){
+  const map = {};
+  const claimedFields = Object.keys(FIELD_ALIASES);
+  headerRow.forEach((cell, col) => {
+    const h = normalizeHeader(cell);
+    if (!h) return;
+    for (const field of claimedFields){
+      if (map[field] !== undefined) continue;
+      const aliases = [...FIELD_ALIASES[field]].sort((a,b)=>b.length-a.length);
+      if (aliases.some(a => h === a || h.includes(a))){ map[field] = col; break; }
+    }
+  });
+  return map;
+}
+
+function rowToSong(row, columnMap, getLink, rowIndex){
+  const get = (field) => columnMap[field] !== undefined ? (row[columnMap[field]]||'').toString().trim() : '';
+  const title = get('title');
+  if (!title) return null;
+  const artist = get('artist');
+  const bpmRaw = get('bpm');
+  let mp3 = get('mp3');
+  let youtube = get('youtube');
+  let sheetMusic = get('sheetMusic');
+  if (getLink){
+    // El link real de audio a veces queda "huérfano": en hojas que antes compartían
+    // una sola columna de Tonalidad para tono/partitura/audio, al separar las columnas
+    // el texto se movió pero el hipervínculo se quedó pegado a la celda de Tonalidad
+    // original (que ahora luce vacía). Como lo prioritario es que el audio suene, se
+    // usa ese link huérfano como respaldo para el mp3 si Secuencia no trae uno propio.
+    let mp3Link = columnMap.mp3 !== undefined ? getLink(rowIndex, columnMap.mp3) : null;
+    if (!mp3Link && columnMap.originalKey !== undefined) mp3Link = getLink(rowIndex, columnMap.originalKey);
+    if (!mp3Link && columnMap.key !== undefined) mp3Link = getLink(rowIndex, columnMap.key);
+    if (mp3Link) mp3 = mp3Link;
+
+    if (columnMap.youtube !== undefined){ const l = getLink(rowIndex, columnMap.youtube); if (l) youtube = l; }
+    if (columnMap.sheetMusic !== undefined){ const l = getLink(rowIndex, columnMap.sheetMusic); if (l) sheetMusic = l; }
+  }
+  return {
+    id: stableSongId(title, artist),
+    title, artist,
+    key: get('key') || 'C',
+    originalKey: get('originalKey'),
+    bpm: bpmRaw ? (parseInt(bpmRaw,10) || null) : null,
+    youtube, mp3, sheetMusic,
+    sequence: get('sequence').split(',').map(x=>x.trim()).filter(Boolean),
+    annotations: get('annotations'),
+    chords: get('chords'),
+    favorite: false,
+  };
+}
+
+function importRows(rows, getLink){
+  const headerIdx = detectHeaderRow(rows);
+  const columnMap = buildColumnMap(rows[headerIdx] || []);
+  const songs = [];
+  for (let i = headerIdx + 1; i < rows.length; i++){
+    const song = rowToSong(rows[i] || [], columnMap, getLink, i);
+    if (song) songs.push(song);
+  }
+  return { columnMap, songs };
+}
+
+function mergeImportedSongs(imported){
+  imported.forEach(song => {
+    const existing = state.songs.find(s => s.id === song.id);
+    if (existing){
+      Object.keys(song).forEach(k => {
+        if (k === 'id' || k === 'favorite') return;
+        const v = song[k];
+        const isEmpty = v === '' || v === null || (Array.isArray(v) && v.length===0);
+        if (!isEmpty) existing[k] = v;
+      });
+    } else {
+      state.songs.push(song);
+    }
+  });
+  saveSongs(state.songs);
+}
+function replaceAllSongs(imported){
+  state.songs = imported;
+  saveSongs(state.songs);
+}
+
+function showImportPreview(songs, source){
+  if (!songs.length){
+    openModal(`<div class="p-5"><p class="text-sm text-neutral-400">No se encontraron filas válidas para importar desde ${escapeHtml(source)}.</p><button onclick="closeModal()" class="w-full mt-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm">Cerrar</button></div>`);
+    return;
+  }
+  openModal(`
+    <div class="p-5">
+      <h2 class="text-lg font-bold mb-1 text-white">Vista previa de importación</h2>
+      <p class="text-sm text-neutral-500 mb-4">${songs.length} canciones detectadas desde ${escapeHtml(source)}.</p>
+      <div class="max-h-64 overflow-y-auto border border-neutral-800 rounded-lg divide-y divide-neutral-800">
+        ${songs.slice(0,50).map(s => `<div class="px-3 py-2 text-sm flex justify-between gap-2"><span class="truncate">${escapeHtml(s.title)}</span><span class="text-neutral-500 truncate">${escapeHtml(s.artist)}</span></div>`).join('')}
+        ${songs.length>50 ? `<div class="px-3 py-2 text-xs text-neutral-600">...y ${songs.length-50} más</div>` : ''}
+      </div>
+      <div class="flex flex-col sm:flex-row gap-2 mt-4">
+        <button onclick="mergeImportedSongs(window.__importedSongs); closeModal(); showView('library');" class="flex-1 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-black text-sm font-bold">Fusionar con mi repertorio</button>
+        <button onclick="if(confirm('Esto reemplazará TODO tu repertorio actual. ¿Continuar?')){ replaceAllSongs(window.__importedSongs); closeModal(); showView('library'); }" class="flex-1 py-2.5 rounded-lg bg-neutral-800 hover:bg-red-900/50 text-sm font-semibold">Reemplazar todo</button>
+      </div>
+      <button onclick="closeModal()" class="w-full mt-2 py-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-700 text-xs">Cancelar</button>
+    </div>
+  `, { wide:true });
+  window.__importedSongs = songs;
+}
+
+// sheet_to_json(header:1) devuelve arreglos que empiezan en índice 0, pero cuando la
+// columna A de la hoja está completamente vacía en TODAS las filas, SheetJS recorta
+// esa columna del rango detectado y el arreglo empieza directamente en la columna B
+// real. Si se construyeran direcciones de celda asumiendo que índice 0 = columna A,
+// los hipervínculos leídos quedarían desalineados una columna (esto causó que se
+// leyera el link equivocado). Este helper corrige el desfase usando el rango real.
+function makeSheetLinkGetter(sheet){
+  const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1:A1');
+  return (r, c) => {
+    const addr = XLSX.utils.encode_cell({ r: r + range.s.r, c: c + range.s.c });
+    const cell = sheet[addr];
+    return cell && cell.l && cell.l.Target ? cell.l.Target : null;
+  };
+}
+
+function openImportExcelModal(){
+  openModal(`
+    <div class="p-5">
+      <h2 class="text-lg font-bold mb-4 text-white">Importar Excel / CSV</h2>
+      <p class="text-sm text-neutral-500 mb-4">Selecciona el archivo .xlsx, .xls o .csv de tu repertorio.</p>
+      <input id="excelFileInput" type="file" accept=".xlsx,.xls,.csv" class="w-full text-sm file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-neutral-800 file:text-neutral-200 file:text-sm">
+      <button onclick="closeModal()" class="w-full mt-5 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm">Cancelar</button>
+    </div>
+  `);
+  document.getElementById('excelFileInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type:'binary', cellFormula:false });
+        const sheetName = wb.SheetNames[0];
+        const sheet = wb.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header:1, raw:false, defval:'' });
+        const getLink = makeSheetLinkGetter(sheet);
+        const { songs } = importRows(rows, getLink);
+        openModal(`<div class="p-5 text-center text-sm text-neutral-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i><span id="excelEnrichStatus">Trayendo partituras...</span></div>`);
+        await enrichWithSheetMusicChords(songs, (done, total) => {
+          const el = document.getElementById('excelEnrichStatus');
+          if (el) el.textContent = `Trayendo partituras (${done}/${total})...`;
+        });
+        showImportPreview(songs, file.name);
+      } catch(err){
+        openModal(`<div class="p-5"><p class="text-sm text-red-400">No se pudo leer el archivo: ${escapeHtml(err.message)}</p><button onclick="closeModal()" class="w-full mt-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm">Cerrar</button></div>`);
+      }
+    };
+    reader.readAsBinaryString(file);
+  });
+}
+
+/* ============================================================
+   GOOGLE SHEETS SYNC
+   ============================================================ */
+function parseSheetUrl(url){
+  const idMatch = url.match(/\/d\/([\w-]+)/);
+  const gidMatch = url.match(/[?&#]gid=(\d+)/);
+  if (!idMatch) return null;
+  return { id:idMatch[1], gid: gidMatch ? gidMatch[1] : '0' };
+}
+function parseCSV(text){
+  const rows = []; let row = [], field = '', inQuotes = false;
+  for (let i=0; i<text.length; i++){
+    const c = text[i];
+    if (inQuotes){
+      if (c === '"'){ if (text[i+1] === '"'){ field += '"'; i++; } else inQuotes = false; }
+      else field += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\r') { /* skip */ }
+    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else field += c;
+  }
+  if (field.length || row.length){ row.push(field); rows.push(row); }
+  return rows;
+}
+// Se usa el export real de Excel (.xlsx) de la hoja, no el export CSV: el CSV que
+// genera Google (gviz) descarta los hipervínculos de las celdas, así que los links
+// de audio/partitura se perdían. El .xlsx sí los conserva (mismo Content-Type que
+// bajarías desde Archivo > Descargar > Microsoft Excel), y lo parseamos con el mismo
+// SheetJS que ya usa la importación manual — incluida la lectura de cell.l.Target.
+async function syncFromGoogleSheet(url){
+  const p = parseSheetUrl(url);
+  if (!p) throw new Error('URL de Google Sheet inválida.');
+  const xlsxUrl = `https://docs.google.com/spreadsheets/d/${p.id}/export?format=xlsx`;
+  let res;
+  try {
+    res = await fetch(xlsxUrl);
+  } catch(networkErr){
+    const fileHint = location.protocol === 'file:'
+      ? ' Esto suele pasar cuando el archivo se abre con doble clic (protocolo "file://"): algunos navegadores bloquean las conexiones a internet desde archivos locales. Prueba abrirlo con Chrome, o sube el archivo a GitHub Pages / Netlify para que la sincronización funcione siempre.'
+      : ' Revisa tu conexión a internet.';
+    throw new Error('No se pudo conectar con Google Sheets.' + fileHint + ' Mientras tanto, usa "Pegar datos manualmente" abajo.');
+  }
+  if (!res.ok) throw new Error(`No se pudo obtener la hoja (código ${res.status}). ¿Está compartida como "Cualquiera con el enlace puede ver"?`);
+  const buf = await res.arrayBuffer();
+  const firstByte = new Uint8Array(buf, 0, 1)[0];
+  if (firstByte === 0x3C){ // '<' — Google devolvió HTML (pantalla de acceso) en vez del archivo real
+    throw new Error('Google devolvió una página de acceso en vez del archivo — la hoja probablemente no está compartida como "Cualquiera con el enlace puede ver". Revisa Archivo > Compartir en el Google Sheet.');
+  }
+  const wb = XLSX.read(buf, { type:'array', cellFormula:false });
+  const sheetName = wb.SheetNames[0];
+  const sheet = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, { header:1, raw:false, defval:'' });
+  const getLink = makeSheetLinkGetter(sheet);
+  return { rows, getLink };
+}
+
+// Cuando "Partitura" es un Google Doc, trae su contenido de texto y lo usa como
+// cifrado — así el acorde queda transportable en vez de ser solo un link para abrir
+// aparte. Solo se hace para canciones que TODAVÍA no tienen cifrado guardado, para
+// no pisar ediciones manuales del cifrado en sincronizaciones futuras. Los fallos
+// individuales (doc privado, no es texto, etc.) se ignoran por canción sin frenar
+// el resto de la sincronización.
+async function enrichWithSheetMusicChords(songs, onProgress){
+  const candidates = songs.filter(s => {
+    const m = /docs\.google\.com\/document\/d\/([\w-]+)/.exec(s.sheetMusic || '');
+    if (!m) return false;
+    const existing = state.songs.find(x => x.id === s.id);
+    if (existing && existing.chords && existing.chords.trim()) return false;
+    s.__docId = m[1];
+    return true;
+  });
+  let done = 0;
+  const CONCURRENCY = 5;
+  let cursor = 0;
+  async function worker(){
+    while (cursor < candidates.length){
+      const song = candidates[cursor++];
+      try {
+        const res = await fetch(`https://docs.google.com/document/d/${song.__docId}/export?format=txt`);
+        if (res.ok){
+          const text = (await res.text()).replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+          if (text) song.chords = text;
+        }
+      } catch(e){ /* se ignora esta canción puntual, no debe frenar la sincronización */ }
+      done++;
+      if (onProgress) onProgress(done, candidates.length);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, candidates.length) }, worker));
+  songs.forEach(s => delete s.__docId);
+}
+
+const OFFICIAL_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1IzkuOTzx6K0VQERNQ2QSUxhPJ0ms1f13MmD5556CCd0/edit?usp=sharing';
+
+function openSyncSheetModal(){
+  openModal(`
+    <div class="p-5">
+      <h2 class="text-lg font-bold mb-4 text-white">Sincronizar Google Sheet</h2>
+      <label class="text-xs text-neutral-500">URL del Google Sheet</label>
+      <input id="sheetUrlInput" value="${escapeHtml(OFFICIAL_SHEET_URL)}" class="w-full mt-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500/60">
+      <p class="text-xs text-neutral-600 mt-1.5">La hoja debe estar compartida como "Cualquiera con el enlace puede ver".</p>
+      <div id="syncStatus" class="text-sm mt-3"></div>
+      <div class="flex gap-2 mt-4">
+        <button onclick="closeModal()" class="flex-1 py-2.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm font-semibold">Cancelar</button>
+        <button id="btnDoSync" onclick="handleSyncClick()" class="flex-1 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-black text-sm font-bold">Sincronizar ahora</button>
+      </div>
+      <button onclick="openManualPasteModal()" class="w-full mt-3 text-xs text-neutral-500 hover:text-orange-400 underline">¿Falló? Pegar datos manualmente</button>
+    </div>
+  `);
+}
+async function handleSyncClick(){
+  const url = document.getElementById('sheetUrlInput').value.trim();
+  const statusEl = document.getElementById('syncStatus');
+  const btn = document.getElementById('btnDoSync');
+  btn.disabled = true;
+  statusEl.innerHTML = `<span class="text-neutral-500"><i class="fa-solid fa-spinner fa-spin"></i> Sincronizando...</span>`;
+  try {
+    const { rows, getLink } = await syncFromGoogleSheet(url);
+    const { songs } = importRows(rows, getLink);
+    await enrichWithSheetMusicChords(songs, (done, total) => {
+      statusEl.innerHTML = `<span class="text-neutral-500"><i class="fa-solid fa-spinner fa-spin"></i> Trayendo partituras (${done}/${total})...</span>`;
+    });
+    closeModal();
+    showImportPreview(songs, 'Google Sheet');
+  } catch(err){
+    statusEl.innerHTML = `<span class="text-red-400">${escapeHtml(err.message)}</span>`;
+    btn.disabled = false;
+  }
+}
+function openManualPasteModal(){
+  openModal(`
+    <div class="p-5">
+      <h2 class="text-lg font-bold mb-2 text-white">Pegar datos manualmente</h2>
+      <p class="text-sm text-neutral-500 mb-3">Copia el rango de tu Google Sheet (con encabezados) y pégalo aquí.</p>
+      <textarea id="pasteArea" rows="10" class="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm mono focus:outline-none focus:ring-1 focus:ring-orange-500/60" placeholder="Título	Artista	Tono	..."></textarea>
+      <div class="flex gap-2 mt-4">
+        <button onclick="closeModal()" class="flex-1 py-2.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm font-semibold">Cancelar</button>
+        <button onclick="handleManualPaste()" class="flex-1 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-black text-sm font-bold">Procesar</button>
+      </div>
+    </div>
+  `, { wide:true });
+}
+function handleManualPaste(){
+  const text = document.getElementById('pasteArea').value;
+  const rows = text.includes('\t')
+    ? text.split(/\r?\n/).filter(l=>l.length).map(l => l.split('\t'))
+    : parseCSV(text);
+  const { songs } = importRows(rows, null);
+  closeModal();
+  showImportPreview(songs, 'pegado manual');
+}
+
+/* ============================================================
+   BACKUP JSON
+   ============================================================ */
+function exportBackup(){
+  const blob = new Blob([JSON.stringify(state.songs, null, 2)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const date = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `mark-chords-backup-${date}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+function openImportBackupModal(){
+  openModal(`
+    <div class="p-5">
+      <h2 class="text-lg font-bold mb-4 text-white">Restaurar backup</h2>
+      <input id="backupFileInput" type="file" accept="application/json" class="w-full text-sm file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-neutral-800 file:text-neutral-200 file:text-sm">
+      <button onclick="closeModal()" class="w-full mt-5 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm">Cancelar</button>
+    </div>
+  `);
+  document.getElementById('backupFileInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const raw = JSON.parse(ev.target.result);
+        if (!Array.isArray(raw)) throw new Error('Formato inválido.');
+        const songs = raw.map(coerceSong).filter(Boolean);
+        showImportPreview(songs, 'backup .json');
+      } catch(err){
+        openModal(`<div class="p-5"><p class="text-sm text-red-400">No se pudo leer el backup: ${escapeHtml(err.message)}</p><button onclick="closeModal()" class="w-full mt-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm">Cerrar</button></div>`);
+      }
+    };
+    reader.readAsText(file);
+  });
+}
+
+/* ============================================================
+   CARGA INICIAL
+   ============================================================ */
+// Al abrir, se lee el repertorio directo del repositorio de GitHub (la fuente de la
+// verdad compartida por todos) — sin login, sin depender del Google Sheet. Si no hay
+// internet o el archivo aún no existe, se sigue viendo lo que ya había guardado
+// localmente en este dispositivo (cargado de entrada en state.songs), sin bloquear
+// ni interrumpir a nadie.
+async function loadInitialData(){
+  const icon = document.getElementById('syncIcon');
+  if (icon) icon.classList.add('fa-spin');
+  try {
+    const [cloud, cloudSetlist] = await Promise.all([loadSongsFromCloud(), loadSetlistFromCloud()]);
+    if (cloud){
+      if (isDirty()){
+        // Hay una edición local que todavía no se confirmó guardada en la nube (por
+        // ejemplo, se recargó la página antes de que pasara el debounce de 1.5s, o el
+        // guardado anterior falló). Adoptar la copia de la nube ahora la borraría en
+        // silencio — se conserva la local y se reintenta subirla en su lugar.
+        showToast('Tienes cambios sin guardar en la nube — reintentando...', 'info');
+        runCloudPush();
+      } else {
+        state.songs = cloud;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(cloud)); // cache local; no dispara push de vuelta
+      }
+    }
+    if (cloudSetlist){
+      if (isSetlistDirty()){
+        runSetlistCloudPush();
+      } else {
+        state.setlist = cloudSetlist;
+        localStorage.setItem(SETLIST_STORAGE_KEY, JSON.stringify(cloudSetlist));
+      }
+    }
+    renderLibrary();
+    renderMain();
+  } catch(err){
+    console.warn('No se pudo cargar el repertorio de la nube (se sigue mostrando el local):', err.message);
+  } finally {
+    if (icon) icon.classList.remove('fa-spin');
+  }
+}
+
+// Si un guardado quedó pendiente por falta de conexión, se reintenta solo apenas
+// vuelva internet — sin esto, solo se reintentaba si el usuario volvía a editar algo.
+window.addEventListener('online', () => {
+  if (!getGithubToken()) return;
+  if (isDirty()) runCloudPush();
+  if (isSetlistDirty()) runSetlistCloudPush();
+});
+
+// Aviso de "hay cambios sin guardar" si se cierra/recarga la pestaña justo cuando un
+// guardado está en curso o quedó pendiente — reduce el riesgo de perder una edición.
+window.addEventListener('beforeunload', (e) => {
+  if (cloudPushInFlight || isDirty() || setlistPushInFlight || isSetlistDirty()){
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+/* ============================================================
+   INIT
+   ============================================================ */
+applyResponsiveLayout();
+renderLibrary();
+renderMain();
+loadInitialData();
+</script>
+</body>
+</html>
