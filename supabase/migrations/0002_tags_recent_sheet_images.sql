@@ -18,7 +18,13 @@ insert into storage.buckets (id, name, public)
 values ('sheet-images', 'sheet-images', false)
 on conflict (id) do nothing;
 
-alter table storage.objects enable row level security;
+-- Row Level Security en storage.objects ya viene activada por defecto en todo proyecto
+-- Supabase (esa tabla la administra Supabase internamente, por eso "ALTER TABLE" sobre
+-- ella da error de permisos con la cuenta normal del proyecto) — no hace falta activarla,
+-- solo agregar las políticas.
+drop policy if exists sheet_images_team_select on storage.objects;
+drop policy if exists sheet_images_team_insert on storage.objects;
+drop policy if exists sheet_images_team_delete on storage.objects;
 
 create policy sheet_images_team_select on storage.objects for select
   using (bucket_id = 'sheet-images' and is_team_member(((storage.foldername(name))[1])::uuid));
