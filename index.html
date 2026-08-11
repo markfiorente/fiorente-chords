@@ -34,6 +34,17 @@
   @keyframes fadeIn{ from{ opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);} }
   input[type=range]{ accent-color:#f97316; }
   .line-clamp-2{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  @media print {
+    body > *:not(#printArea){ display:none !important; }
+    #printArea{ display:block !important; background:#fff; color:#000; padding:24px; }
+    #printArea h1{ font-size:20px; margin-bottom:2px; }
+    #printArea p{ margin-bottom:14px; color:#333; }
+    #printArea .chord-tok{ color:#000; font-weight:800; }
+    #printArea .lyric-line{ color:#000; white-space:pre-wrap; }
+    #printArea .chord-line{ white-space:pre; font-family:'JetBrains Mono',monospace; }
+    #printArea .section-header{ color:#000; font-weight:800; text-transform:uppercase; letter-spacing:.06em; margin:16px 0 4px; border-bottom:1px solid #ccc; padding-bottom:2px; }
+    #printArea .spacer{ height:.6em; }
+  }
 </style>
 </head>
 <body class="bg-black text-neutral-100 h-screen flex flex-col overflow-hidden">
@@ -75,7 +86,15 @@
       </div>
       <div class="flex items-center justify-between gap-2">
         <span class="text-[11px] font-bold uppercase tracking-wide text-neutral-500 whitespace-nowrap">Biblioteca (<span id="libraryCount">0</span>)</span>
-        <select id="keyFilterSelect" class="text-xs bg-neutral-900 border border-neutral-800 rounded-md px-2 py-1 text-neutral-300 max-w-[150px] focus:outline-none"></select>
+        <div class="flex items-center gap-1.5">
+          <select id="tagFilterSelect" class="text-xs bg-neutral-900 border border-neutral-800 rounded-md px-2 py-1 text-neutral-300 max-w-[110px] focus:outline-none"></select>
+          <select id="keyFilterSelect" class="text-xs bg-neutral-900 border border-neutral-800 rounded-md px-2 py-1 text-neutral-300 max-w-[110px] focus:outline-none"></select>
+        </div>
+      </div>
+      <div class="flex items-center gap-1.5 text-[11px]">
+        <span class="text-neutral-600">Ordenar:</span>
+        <button id="btnSortTitle" onclick="setLibrarySort('title')" class="px-2 py-0.5 rounded-full">Título</button>
+        <button id="btnSortRecent" onclick="setLibrarySort('recent')" class="px-2 py-0.5 rounded-full">Usadas recientemente</button>
       </div>
     </div>
     <div class="flex-1 overflow-y-auto p-2">
@@ -92,7 +111,7 @@
     </div>
     <div class="p-2.5 border-t border-neutral-800 flex items-center justify-between text-[10px] text-neutral-600 shrink-0">
       <span>Mark Chords v3.0</span>
-      <button onclick="state.search=''; document.getElementById('searchInput').value=''; state.keyFilter=''; renderLibrary();" class="hover:text-orange-400">Resetear filtros</button>
+      <button onclick="state.search=''; document.getElementById('searchInput').value=''; state.keyFilter=''; state.tagFilter=''; setLibrarySort('title');" class="hover:text-orange-400">Resetear filtros</button>
     </div>
   </aside>
 
@@ -114,6 +133,8 @@
             <p id="dArtist" class="text-neutral-400 text-sm mt-0.5"></p>
           </div>
           <div class="flex items-center gap-2 shrink-0">
+            <button onclick="toggleMetronome()" title="Metrónomo" class="metro-btn w-10 h-10 rounded-lg bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center text-neutral-400 relative"><i class="fa-solid fa-stopwatch"></i><span class="metro-dot hidden absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-orange-400"></span></button>
+            <button onclick="printCurrentSong()" title="Imprimir / PDF" class="w-10 h-10 rounded-lg bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center text-neutral-400"><i class="fa-solid fa-print"></i></button>
             <button id="btnFavorite" onclick="toggleFavorite(state.currentSongId)" class="w-10 h-10 rounded-lg bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center text-neutral-400"><i class="fa-solid fa-star"></i></button>
             <button onclick="openEditSongModal(state.currentSongId)" class="w-10 h-10 rounded-lg bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center"><i class="fa-solid fa-pen"></i></button>
             <button onclick="handleDeleteSong(state.currentSongId)" class="w-10 h-10 rounded-lg bg-neutral-800 hover:bg-red-900/60 text-red-400 flex items-center justify-center"><i class="fa-solid fa-trash"></i></button>
@@ -149,6 +170,11 @@
         <div id="dChartEmpty" class="hidden text-center text-neutral-600 text-sm py-10">Sin cifrado todavía. <button onclick="openEditSongModal(state.currentSongId)" class="text-orange-400 underline">Pega el cifrado aquí</button>.</div>
       </div>
 
+      <div id="dSheetImageCard" class="hidden bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5">
+        <h3 class="text-xs font-bold text-neutral-500 uppercase tracking-wide mb-3 flex items-center gap-2"><i class="fa-solid fa-image"></i> Partitura (imagen/PDF)</h3>
+        <div id="dSheetImageArea"></div>
+      </div>
+
       <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5">
         <h3 class="text-xs font-bold text-neutral-500 uppercase tracking-wide mb-3 flex items-center gap-2"><i class="fa-brands fa-youtube"></i> Referencia</h3>
         <div id="dYoutubeArea"></div>
@@ -179,6 +205,7 @@
     </div>
     <button onclick="stageNext()" title="Siguiente canción" class="stage-nav-btn w-8 h-8 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 flex items-center justify-center shrink-0"><i class="fa-solid fa-chevron-right text-xs"></i></button>
     <div class="flex items-center gap-1 shrink-0">
+      <button onclick="toggleMetronome()" title="Metrónomo" class="metro-btn w-9 h-9 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 flex items-center justify-center relative"><i class="fa-solid fa-stopwatch text-xs"></i><span class="metro-dot hidden absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-orange-400"></span></button>
       <button onclick="stageFontStep(-2)" class="w-9 h-9 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 flex items-center justify-center text-xs font-bold">A-</button>
       <button onclick="stageFontStep(2)" class="w-9 h-9 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 flex items-center justify-center text-sm font-bold">A+</button>
     </div>
@@ -197,6 +224,7 @@
 
 <div id="modalRoot"></div>
 <div id="toastRoot" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] flex flex-col gap-2 items-center pointer-events-none"></div>
+<div id="printArea" class="hidden"></div>
 
 <script>
 /* ============================================================
@@ -347,6 +375,9 @@ function coerceSong(raw){
     annotations: str(raw.annotations),
     chords: str(raw.chords),
     favorite: raw.favorite === true,
+    tags: Array.isArray(raw.tags) ? raw.tags.filter(x => typeof x === 'string') : [],
+    lastUsedAt: raw.lastUsedAt || null,
+    sheetImagePath: str(raw.sheetImagePath),
   };
 }
 
@@ -382,12 +413,16 @@ function rowToSongObj(row){
     annotations: row.annotations,
     chords: row.chords,
     favorite: row.favorite,
+    tags: row.tags,
+    lastUsedAt: row.last_used_at,
+    sheetImagePath: row.sheet_image_path,
   };
 }
 const SONG_FIELD_TO_COLUMN = {
   title:'title', artist:'artist', key:'key', originalKey:'original_key', bpm:'bpm',
   youtube:'youtube', mp3:'mp3', sheetMusic:'sheet_music', sequence:'sequence',
-  annotations:'annotations', chords:'chords', favorite:'favorite',
+  annotations:'annotations', chords:'chords', favorite:'favorite', tags:'tags',
+  lastUsedAt:'last_used_at', sheetImagePath:'sheet_image_path',
 };
 function songPatchToRow(patch){
   const row = {};
@@ -448,7 +483,7 @@ function stableSongId(title, artist){
 }
 
 function blankSong(){
-  return { id:'', title:'', artist:'', key:'C', originalKey:'', bpm:null, youtube:'', mp3:'', sheetMusic:'', sequence:[], annotations:'', chords:'', favorite:false };
+  return { id:'', title:'', artist:'', key:'C', originalKey:'', bpm:null, youtube:'', mp3:'', sheetMusic:'', sequence:[], annotations:'', chords:'', favorite:false, tags:[], lastUsedAt:null, sheetImagePath:'' };
 }
 
 // Inserta una fila nueva y espera el id real (uuid) que asigna la base de datos —
@@ -492,6 +527,99 @@ function deleteSong(id){
 }
 function getSong(id){ return state.songs.find(s => s.id === id); }
 
+// Marca una canción como "usada" cuando de verdad se empieza a tocar en vivo (entrar a
+// Modo En Vivo, o navegar a la siguiente dentro de Modo En Vivo) — no al solo abrirla
+// para verla/editarla en la biblioteca. Alimenta el orden "Usadas recientemente".
+function markSongUsed(id){
+  const s = getSong(id);
+  if (!s) return;
+  const now = new Date().toISOString();
+  s.lastUsedAt = now;
+  sb.from('songs').update({ last_used_at: now }).eq('id', id).then(({ error }) => {
+    if (error) console.warn('No se pudo actualizar "usada recientemente":', error.message);
+  });
+}
+
+/* ============================================================
+   PARTITURA EN IMAGEN/PDF (Supabase Storage, privado por equipo)
+   ============================================================
+   Bucket "sheet-images", ruta "{team_id}/{song_id}/{archivo}" — la política RLS de
+   Storage (migración 0002) usa el primer segmento de la ruta para confirmar que quien
+   lee/escribe es miembro de ese equipo. Solo se guarda y se muestra el archivo tal
+   cual, sin conversión a texto ni reconocimiento de partitura — la versión simple que
+   se pidió.
+   ============================================================ */
+const SHEET_IMAGE_BUCKET = 'sheet-images';
+function isPdfPath(path){ return /\.pdf$/i.test(path||''); }
+
+async function handleSheetImageUpload(input, songId){
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('sheetImageStatus');
+  if (statusEl) statusEl.innerHTML = '<span class="text-neutral-500"><i class="fa-solid fa-spinner fa-spin"></i> Subiendo...</span>';
+  try {
+    const s = getSong(songId);
+    if (s && s.sheetImagePath){
+      await sb.storage.from(SHEET_IMAGE_BUCKET).remove([s.sheetImagePath]);
+    }
+    const path = `${currentTeam.id}/${songId}/${Date.now()}-${file.name}`;
+    const { error: upErr } = await sb.storage.from(SHEET_IMAGE_BUCKET).upload(path, file);
+    if (upErr) throw upErr;
+    updateSong(songId, { sheetImagePath: path });
+    if (s) s.sheetImagePath = path; // refleja de inmediato para el re-render local (updateSong es optimista)
+    renderSheetImageFormArea(getSong(songId));
+    if (state.currentSongId === songId) renderMain();
+    showToast('Partitura subida ✓', 'success');
+  } catch(err){
+    if (statusEl) statusEl.innerHTML = `<span class="text-red-400">${escapeHtml(err.message)}</span>`;
+    showToast('No se pudo subir la partitura: ' + err.message, 'error');
+  }
+}
+
+async function removeSheetImage(songId){
+  const s = getSong(songId);
+  if (!s || !s.sheetImagePath) return;
+  if (!confirm('¿Quitar la partitura de esta canción?')) return;
+  try { await sb.storage.from(SHEET_IMAGE_BUCKET).remove([s.sheetImagePath]); }
+  catch(err){ /* si ya no existe en Storage, igual se limpia la referencia */ }
+  updateSong(songId, { sheetImagePath: '' });
+  s.sheetImagePath = '';
+  renderSheetImageFormArea(s);
+  if (state.currentSongId === songId) renderMain();
+}
+
+function renderSheetImageFormArea(song){
+  const area = document.getElementById('sheetImageFormArea');
+  if (!area) return;
+  area.innerHTML = `
+    ${song.sheetImagePath
+      ? `<div class="flex items-center gap-2 text-xs text-neutral-400 mb-2"><i class="fa-solid fa-circle-check text-green-400"></i> Ya tiene ${isPdfPath(song.sheetImagePath) ? 'un PDF' : 'una imagen'} adjunta — sube otra para reemplazarla. <button type="button" onclick="removeSheetImage('${song.id}')" class="text-red-400 hover:underline">Quitar</button></div>`
+      : ''}
+    <input type="file" accept="image/*,.pdf" onchange="handleSheetImageUpload(this, '${song.id}')" class="w-full text-sm file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-neutral-800 file:text-neutral-200 file:text-sm">
+    <div id="sheetImageStatus" class="text-xs mt-1"></div>
+  `;
+}
+
+async function renderSheetImageArea(s){
+  const card = document.getElementById('dSheetImageCard');
+  const area = document.getElementById('dSheetImageArea');
+  if (!s || !s.sheetImagePath){
+    card.classList.add('hidden');
+    return;
+  }
+  card.classList.remove('hidden');
+  area.innerHTML = '<p class="text-xs text-neutral-600"><i class="fa-solid fa-spinner fa-spin"></i> Cargando...</p>';
+  const { data, error } = await sb.storage.from(SHEET_IMAGE_BUCKET).createSignedUrl(s.sheetImagePath, 3600);
+  if (state.currentSongId !== s.id) return; // el usuario ya cambió de canción mientras esto cargaba
+  if (error || !data){
+    area.innerHTML = `<p class="text-xs text-red-400">No se pudo cargar la partitura.</p>`;
+    return;
+  }
+  area.innerHTML = isPdfPath(s.sheetImagePath)
+    ? `<a href="${escapeHtml(data.signedUrl)}" target="_blank" class="inline-flex items-center gap-2 text-sm text-orange-400 hover:underline"><i class="fa-solid fa-file-pdf"></i> Abrir PDF</a>`
+    : `<a href="${escapeHtml(data.signedUrl)}" target="_blank"><img src="${escapeHtml(data.signedUrl)}" class="max-w-full rounded-lg border border-neutral-800" alt="Partitura"></a>`;
+}
+
 /* ============================================================
    ESTADO GLOBAL + NAVEGACIÓN
    ============================================================ */
@@ -502,12 +630,72 @@ const state = {
   targetKeyStr: 'C',
   search: '',
   keyFilter: '',
+  tagFilter: '',
+  librarySort: 'title', // 'title' | 'recent'
   mobileView: 'library', // 'library' | 'detail' — solo controla el layout en pantallas angostas
   detailFontSize: parseInt(localStorage.getItem(DETAIL_FONT_KEY), 10) || 17,
   autoScroll: { active:false, rafId:null, lastTs:null },
   setlist: [], // orden de canciones del set de hoy (IDs) — se carga desde Supabase
   stageSequenceIds: [], // secuencia de navegación siguiente/anterior activa en Modo En Vivo
 };
+
+/* ============================================================
+   METRÓNOMO
+   ============================================================
+   Usa el "lookahead scheduler" estándar de Web Audio API en vez de setInterval puro,
+   para que el clic no se desfase del tempo real con el tiempo (setInterval por sí solo
+   se atrasa/adelanta de forma perceptible después de unos minutos).
+   ============================================================ */
+const metro = { ctx: null, timerId: null, nextNoteTime: 0, bpm: 0, active: false };
+
+function metroPlayClick(time){
+  const ctx = metro.ctx;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.frequency.value = 1000;
+  gain.gain.setValueAtTime(0.5, time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.start(time); osc.stop(time + 0.05);
+  setTimeout(() => {
+    document.querySelectorAll('.metro-dot').forEach(el => {
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 90);
+    });
+  }, Math.max(0, (time - ctx.currentTime) * 1000));
+}
+function metroScheduler(){
+  while (metro.nextNoteTime < metro.ctx.currentTime + 0.1){
+    metroPlayClick(metro.nextNoteTime);
+    metro.nextNoteTime += 60 / metro.bpm;
+  }
+  metro.timerId = setTimeout(metroScheduler, 25);
+}
+function startMetronome(bpm){
+  if (metro.active) stopMetronome();
+  if (!metro.ctx) metro.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (metro.ctx.state === 'suspended') metro.ctx.resume(); // requiere gesto de usuario en iOS
+  metro.bpm = bpm;
+  metro.nextNoteTime = metro.ctx.currentTime + 0.05;
+  metro.active = true;
+  metroScheduler();
+  updateMetroUI();
+}
+function stopMetronome(){
+  metro.active = false;
+  clearTimeout(metro.timerId);
+  updateMetroUI();
+}
+function toggleMetronome(){
+  const s = getSong(state.currentSongId);
+  const bpm = safeBpm(s && s.bpm);
+  if (!bpm){ showToast('Esta canción no tiene BPM definido', 'info'); return; }
+  if (metro.active) stopMetronome(); else startMetronome(bpm);
+}
+function updateMetroUI(){
+  document.querySelectorAll('.metro-btn').forEach(btn => btn.classList.toggle('text-orange-400', metro.active));
+  if (!metro.active) document.querySelectorAll('.metro-dot').forEach(el => el.classList.add('hidden'));
+}
 
 // A tamaño lg+ la biblioteca (sidebar) y el detalle (main) se muestran siempre
 // simultáneamente, como una plataforma; en pantallas angostas solo uno a la vez.
@@ -528,6 +716,7 @@ function showView(name){
   }
   document.getElementById('view-stage').classList.add('hidden');
   stopAutoScroll();
+  stopMetronome();
   state.mobileView = name;
   applyResponsiveLayout();
   if (name === 'library') renderLibrary();
@@ -540,6 +729,11 @@ document.getElementById('btnSyncSheet').onclick = () => openSyncSheetModal();
 document.getElementById('btnMore').onclick = () => openMoreModal();
 document.getElementById('searchInput').oninput = (e) => { state.search = e.target.value; renderLibrary(); };
 document.getElementById('keyFilterSelect').onchange = (e) => { state.keyFilter = e.target.value; renderLibrary(); };
+document.getElementById('tagFilterSelect').onchange = (e) => { state.tagFilter = e.target.value; renderLibrary(); };
+function setLibrarySort(sort){
+  state.librarySort = sort;
+  renderLibrary();
+}
 
 /* ============================================================
    LIBRARY (SIDEBAR)
@@ -552,6 +746,10 @@ function getVisibleLibraryList(){
   let list = state.songs;
   if (q) list = list.filter(s => (s.title||'').toLowerCase().includes(q) || (s.artist||'').toLowerCase().includes(q));
   if (state.keyFilter) list = list.filter(s => s.key === state.keyFilter);
+  if (state.tagFilter) list = list.filter(s => (s.tags||[]).includes(state.tagFilter));
+  if (state.librarySort === 'recent'){
+    return [...list].sort((a,b) => (b.favorite?1:0) - (a.favorite?1:0) || (new Date(b.lastUsedAt||0)) - (new Date(a.lastUsedAt||0)));
+  }
   return [...list].sort((a,b) => (b.favorite?1:0) - (a.favorite?1:0));
 }
 
@@ -561,12 +759,21 @@ function renderLibrary(){
   const searchEmptyEl = document.getElementById('searchEmpty');
   const countEl = document.getElementById('libraryCount');
   const filterSel = document.getElementById('keyFilterSelect');
+  const tagFilterSel = document.getElementById('tagFilterSelect');
 
   countEl.textContent = state.songs.length;
 
   const keys = [...new Set(state.songs.map(s => s.key).filter(Boolean))].sort();
   filterSel.innerHTML = `<option value="">Todas las tonalidades</option>` +
     keys.map(k => `<option value="${escapeHtml(k)}" ${k===state.keyFilter?'selected':''}>${escapeHtml(k)}</option>`).join('');
+
+  const tags = [...new Set(state.songs.flatMap(s => s.tags||[]))].sort();
+  tagFilterSel.innerHTML = `<option value="">Todas las etiquetas</option>` +
+    tags.map(t => `<option value="${escapeHtml(t)}" ${t===state.tagFilter?'selected':''}>${escapeHtml(t)}</option>`).join('');
+  tagFilterSel.classList.toggle('hidden', tags.length === 0);
+
+  document.getElementById('btnSortTitle').className = `px-2 py-0.5 rounded-full ${state.librarySort==='title' ? 'bg-orange-500/10 text-orange-400' : 'text-neutral-600 hover:text-neutral-400'}`;
+  document.getElementById('btnSortRecent').className = `px-2 py-0.5 rounded-full ${state.librarySort==='recent' ? 'bg-orange-500/10 text-orange-400' : 'text-neutral-600 hover:text-neutral-400'}`;
 
   if (state.songs.length === 0){
     listEl.innerHTML = '';
@@ -624,6 +831,7 @@ function renderLibrary(){
    MAIN / DETAIL PANE
    ============================================================ */
 function openSong(id){
+  stopMetronome();
   state.currentSongId = id;
   state.transposeSemitones = 0;
   const s = getSong(id);
@@ -708,6 +916,7 @@ function renderMain(){
     sheetMusicIsUrl
       ? `<a href="${escapeHtml(s.sheetMusic)}" target="_blank" class="text-xs bg-orange-500/10 border border-orange-500/30 text-orange-400 rounded-full px-2.5 py-1 hover:bg-orange-500/20"><i class="fa-solid fa-file-lines mr-1"></i>Ver partitura</a>`
       : (s.sheetMusic ? `<span class="text-xs bg-neutral-800 rounded-full px-2.5 py-1 text-neutral-500 max-w-[220px] truncate inline-block align-bottom" title="${escapeHtml(s.sheetMusic)}"><i class="fa-solid fa-file-lines mr-1"></i>Partitura: ${escapeHtml(s.sheetMusic)}</span>` : ''),
+    ...(s.tags||[]).map(t => `<span class="text-xs bg-neutral-800 rounded-full px-2.5 py-1 text-neutral-400"><i class="fa-solid fa-tag mr-1"></i>${escapeHtml(t)}</span>`),
   ].join('');
 
   const dCurrentKeyEl = document.getElementById('dCurrentKey');
@@ -760,6 +969,26 @@ function renderMain(){
     : `<span class="text-sm text-neutral-600">Sin estructura definida.</span>`;
 
   document.getElementById('dAnnotations').textContent = s.annotations || 'Sin anotaciones.';
+
+  updateMetroUI();
+  renderSheetImageArea(s);
+}
+
+// Usa el diálogo de impresión nativo del navegador (el usuario elige "Guardar como
+// PDF" ahí mismo) en vez de una librería — #printArea es lo único visible en @media
+// print (ver <style>), así que solo hace falta llenarlo con una versión limpia del
+// cifrado en el tono actual.
+function printCurrentSong(){
+  const s = getSong(state.currentSongId);
+  if (!s) return;
+  const area = document.getElementById('printArea');
+  const chartHtml = renderChordChart(s.chords, state.transposeSemitones, currentTargetKey());
+  area.innerHTML = `
+    <h1>${escapeHtml(s.title || 'Sin título')}</h1>
+    <p>${escapeHtml(s.artist || '')}${s.artist ? ' — ' : ''}Tono ${escapeHtml(currentTargetKey())}</p>
+    <div class="chart-view mono">${chartHtml || '<p>Sin cifrado.</p>'}</div>
+  `;
+  window.print();
 }
 
 function stepTranspose(delta){
@@ -924,6 +1153,7 @@ function enterStageMode(){
   state.stageSequenceIds = getStageSequenceIds();
   renderStageSong(s);
   showView('stage');
+  markSongUsed(s.id);
 }
 function exitStageMode(){ showView('detail'); }
 
@@ -956,11 +1186,13 @@ function stageGoTo(delta){
   const nextId = ids[((curIdx + delta) % ids.length + ids.length) % ids.length]; // wrap-around
   const nextSong = getSong(nextId);
   if (!nextSong) return;
+  stopMetronome();
   state.currentSongId = nextId;
   state.transposeSemitones = 0;
   state.targetKeyStr = nextSong.key;
   renderStageSong(nextSong);
   renderLibrary(); // mantiene resaltada la canción correcta al salir de Modo En Vivo
+  markSongUsed(nextId);
 }
 function stageNext(){ stageGoTo(1); }
 function stagePrev(){ stageGoTo(-1); }
@@ -1225,6 +1457,16 @@ function renderSongFormModal(song, isNew){
             <input name="sequence" value="${escapeHtml((song.sequence||[]).join(', '))}" placeholder="INTRO, VERSO 1, CORO, PUENTE" class="w-full mt-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500/60">
           </div>
           <div class="col-span-2">
+            <label class="text-xs text-neutral-500">Etiquetas (separadas por comas)</label>
+            <input name="tags" value="${escapeHtml((song.tags||[]).join(', '))}" placeholder="Navidad, Rápida, Ofrenda" class="w-full mt-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500/60">
+          </div>
+          <div class="col-span-2">
+            <label class="text-xs text-neutral-500">Partitura en imagen/PDF</label>
+            ${isNew
+              ? `<p class="text-xs text-neutral-600 mt-1">Guarda la canción primero — después podrás subir la foto o PDF desde "Editar".</p>`
+              : `<div id="sheetImageFormArea" class="mt-1"></div>`}
+          </div>
+          <div class="col-span-2">
             <label class="text-xs text-neutral-500">Anotaciones de teclado</label>
             <textarea name="annotations" rows="2" class="w-full mt-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500/60">${escapeHtml(song.annotations)}</textarea>
           </div>
@@ -1241,6 +1483,8 @@ function renderSongFormModal(song, isNew){
     </form>
   `, { wide:true });
 
+  if (!isNew) renderSheetImageFormArea(song);
+
   document.getElementById('songForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -1254,6 +1498,7 @@ function renderSongFormModal(song, isNew){
       mp3: fd.get('mp3').trim(),
       sheetMusic: fd.get('sheetMusic').trim(),
       sequence: fd.get('sequence').split(',').map(x=>x.trim()).filter(Boolean),
+      tags: fd.get('tags').split(',').map(x=>x.trim()).filter(Boolean),
       annotations: fd.get('annotations').trim(),
       chords: fd.get('chords'),
     };
