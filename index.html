@@ -3,13 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
-<title>Mark Chords — Agua Fresca</title>
+<title>Fiorente Chords</title>
 <link rel="icon" href="data:,">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   :root{ --stage-font: 32px; }
   * { -webkit-tap-highlight-color: transparent; }
@@ -37,13 +38,18 @@
 </head>
 <body class="bg-black text-neutral-100 h-screen flex flex-col overflow-hidden">
 
+<!-- ================= AUTH GATE ================= -->
+<div id="authGate" class="fixed inset-0 z-50 bg-black flex items-center justify-center p-4 hidden">
+  <div id="authGateCard" class="w-full max-w-sm"></div>
+</div>
+
 <!-- ================= HEADER ================= -->
 <header id="appHeader" class="h-14 shrink-0 flex items-center gap-2 px-3 sm:px-4 border-b border-neutral-800 bg-black z-30">
   <button id="btnHome" class="flex items-center gap-2 shrink-0">
     <span class="w-8 h-8 rounded-lg bg-orange-500 text-black flex items-center justify-center text-sm"><i class="fa-solid fa-music"></i></span>
     <span class="hidden xs:flex items-center gap-2">
-      <span class="font-extrabold text-white leading-none whitespace-nowrap">Mark Chords</span>
-      <span class="hidden sm:inline text-[10px] font-bold uppercase tracking-wide text-orange-400 bg-orange-500/10 border border-orange-500/20 rounded-full px-2 py-0.5 whitespace-nowrap">Pianista: Mark</span>
+      <span class="font-extrabold text-white leading-none whitespace-nowrap">Fiorente Chords</span>
+      <span id="teamBadge" class="hidden sm:inline text-[10px] font-bold uppercase tracking-wide text-orange-400 bg-orange-500/10 border border-orange-500/20 rounded-full px-2 py-0.5 whitespace-nowrap max-w-[160px] truncate"></span>
     </span>
   </button>
   <div class="flex-1"></div>
@@ -315,61 +321,20 @@ function renderChordChart(chordsText, semitones, targetKey){
 /* ============================================================
    CAPA DE DATOS
    ============================================================ */
-const STORAGE_KEY = 'mark_chords_songs';
 const STAGE_FONT_KEY = 'mark_chords_stage_fontsize';
 const DETAIL_FONT_KEY = 'mark_chords_detail_fontsize';
 
-function loadSongs(){
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return [];
-  try { return JSON.parse(raw); } catch(e){ return []; }
-}
-function saveSongs(songs){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(songs));
-  markDirty();
-  scheduleCloudPush();
-}
-
-// Marca que hay cambios locales que todavía no se confirmaron guardados en la nube.
-// loadInitialData() la consulta para nunca sobreescribir una edición reciente con una
-// copia vieja de la nube si recién se recargó la página antes de que el guardado
-// automático (debounce de 1.5s) terminara.
-const DIRTY_SONGS_KEY = 'mark_chords_dirty_since';
-function markDirty(){ if (!localStorage.getItem(DIRTY_SONGS_KEY)) localStorage.setItem(DIRTY_SONGS_KEY, String(Date.now())); }
-function clearDirty(){ localStorage.removeItem(DIRTY_SONGS_KEY); }
-function isDirty(){ return !!localStorage.getItem(DIRTY_SONGS_KEY); }
-
-/* ============================================================
-   GUARDADO EN LA NUBE (repositorio de GitHub)
-   ============================================================
-   localStorage sigue siendo la copia local/offline de cada dispositivo, pero el
-   repositorio de GitHub es la fuente de la verdad compartida: cualquiera que abra
-   el link LEE ese archivo (sin necesitar llave), y solo quien tenga configurada la
-   llave de acceso puede ESCRIBIR cambios que luego todos ven. Así se deja de
-   depender del Google Sheet para el día a día — ese fue solo el insumo inicial. */
-const GITHUB_OWNER = 'markfiorente';
-const GITHUB_REPO = 'mark-chords';
-const GITHUB_BRANCH = 'main';
-const GITHUB_DATA_PATH = 'data/songs.json';
-const GITHUB_TOKEN_KEY = 'mark_chords_gh_token';
-
-function getGithubToken(){ return localStorage.getItem(GITHUB_TOKEN_KEY) || ''; }
-function setGithubToken(token){
-  if (token) localStorage.setItem(GITHUB_TOKEN_KEY, token);
-  else localStorage.removeItem(GITHUB_TOKEN_KEY);
-}
-
-// Normaliza un objeto de canción que viene de una fuente NO confiable (la copia de la
-// nube o un backup .json importado por el usuario) a los tipos esperados, para que
-// nunca llegue algo con forma inesperada (o intencionalmente maliciosa) a innerHTML.
-// Descarta entradas sin título usable.
+// Normaliza un objeto de canción que viene de una fuente NO confiable (una fila de la
+// base de datos escrita por cualquier miembro del equipo, o un backup .json importado
+// por el usuario) a los tipos esperados, para que nunca llegue algo con forma
+// inesperada (o intencionalmente maliciosa) a innerHTML. Descarta entradas sin título.
 function coerceSong(raw){
   if (!raw || typeof raw !== 'object') return null;
   const str = (v) => typeof v === 'string' ? v : (v == null ? '' : String(v));
   const title = str(raw.title).trim();
   if (!title) return null;
   return {
-    id: str(raw.id) || stableSongId(title, str(raw.artist)),
+    id: str(raw.id),
     title,
     artist: str(raw.artist),
     key: str(raw.key) || 'C',
@@ -385,209 +350,84 @@ function coerceSong(raw){
   };
 }
 
-async function loadSongsFromCloud(){
-  try {
-    const res = await fetch(`https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${GITHUB_DATA_PATH}?_=${Date.now()}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!Array.isArray(data)) return null;
-    return data.map(coerceSong).filter(Boolean);
-  } catch(e){ return null; }
-}
-
-let cloudPushTimer = null;
-let cloudPushInFlight = false;
-let cloudPushPending = false;
-
-function scheduleCloudPush(){
-  if (!getGithubToken()) return;
-  clearTimeout(cloudPushTimer);
-  cloudPushTimer = setTimeout(runCloudPush, 1500);
-}
-
-// Si ya hay un guardado en curso cuando llega otro cambio, no se lanzan dos PUT en
-// paralelo (eso es lo que causaba el error crudo tipo "Unexpected token... in JSON
-// at position 0" cuando chocaban) — se espera a que termine el actual y luego se
-// vuelve a guardar una sola vez con el estado más reciente.
-async function runCloudPush(){
-  if (cloudPushInFlight){ cloudPushPending = true; return; }
-  cloudPushInFlight = true;
-  try {
-    const sentJson = await pushSongsToCloud();
-    // Solo se limpia "dirty" si lo que hay AHORA en memoria es exactamente lo que se
-    // subió — si una edición llegó mientras el PUT estaba en curso, se queda marcado
-    // como pendiente y el próximo ciclo de guardado (ya encolado por scheduleCloudPush
-    // o por cloudPushPending) lo termina de subir.
-    if (JSON.stringify(state.songs, null, 2) === sentJson) clearDirty();
-    showToast('Guardado en la nube ✓', 'success');
-  } catch(err){
-    showToast('No se guardó en la nube: ' + err.message, 'error');
-  } finally {
-    cloudPushInFlight = false;
-    if (cloudPushPending){ cloudPushPending = false; runCloudPush(); }
-  }
-}
-
-async function safeJson(res){
-  try { return await res.json(); } catch(e){ return null; }
-}
-
-async function pushSongsToCloud(){
-  const token = getGithubToken();
-  if (!token) throw new Error('No hay llave de acceso configurada.');
-  const apiUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_DATA_PATH}`;
-
-  async function getSha(){
-    const res = await fetch(`${apiUrl}?ref=${GITHUB_BRANCH}&_=${Date.now()}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
-    });
-    if (res.ok) return (await safeJson(res))?.sha || null;
-    if (res.status === 404) return null;
-    const body = await safeJson(res);
-    throw new Error(body?.message || `código ${res.status} al verificar el archivo. Revisa que la llave tenga permiso de escritura sobre este repositorio.`);
-  }
-
-  let sentJson;
-  async function putContent(sha){
-    sentJson = JSON.stringify(state.songs, null, 2); // capturado justo antes de enviar
-    const content = btoa(unescape(encodeURIComponent(sentJson)));
-    return fetch(apiUrl, {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: `Actualizar repertorio (${new Date().toLocaleString('es-CO')})`,
-        content,
-        branch: GITHUB_BRANCH,
-        ...(sha ? { sha } : {}),
-      }),
-    });
-  }
-
-  let sha = await getSha();
-  let putRes = await putContent(sha);
-
-  // 409 = alguien más (u otra pestaña) guardó justo entre el GET y el PUT. Es un
-  // choque benigno y esperable con guardado automático; se reintenta una vez con
-  // el sha fresco antes de darlo por fallido.
-  if (putRes.status === 409){
-    sha = await getSha();
-    putRes = await putContent(sha);
-  }
-
-  if (!putRes.ok){
-    const errBody = await safeJson(putRes);
-    throw new Error(errBody?.message || `código ${putRes.status}`);
-  }
-  return sentJson;
-}
-
 /* ============================================================
-   SETLIST DEL DOMINGO (archivo independiente en la nube)
+   SUPABASE (backend compartido — un equipo por banda/iglesia)
    ============================================================
-   Se guarda como un archivo separado (data/setlist.json, solo un array de IDs) en vez
-   de meterlo dentro de data/songs.json — así nunca se toca la forma del archivo real
-   de canciones que ya está en producción con datos de Mark. El pipeline es una copia
-   deliberada del de canciones (no una versión compartida/genérica) para no arriesgar
-   ese código ya probado en uso real.
+   Cada canción es una fila de la tabla `songs`, no un archivo. Row Level Security en
+   el servidor garantiza que un equipo nunca vea ni escriba el repertorio de otro,
+   incluso si hubiera un bug en este cliente. Las escrituras son por fila (no por
+   archivo completo), así que dos personas editando canciones distintas al mismo
+   tiempo ya no pueden pisarse el cambio.
    ============================================================ */
-const GITHUB_SETLIST_PATH = 'data/setlist.json';
-const SETLIST_STORAGE_KEY = 'mark_chords_setlist';
-const SETLIST_DIRTY_KEY = 'mark_chords_setlist_dirty_since';
+const SUPABASE_URL = 'https://fubiopqgycwlyngvcntl.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1YmlvcHFneWN3bHluZ3ZjbnRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0NjQzMTIsImV4cCI6MjEwMjA0MDMxMn0.ScX5EMCX0iW2OYJ3EUstXQGDNcCUefcNfBAAAoEOKbY';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-function loadSetlist(){
-  const raw = localStorage.getItem(SETLIST_STORAGE_KEY);
-  if (!raw) return [];
-  try {
-    const v = JSON.parse(raw);
-    return Array.isArray(v) ? v.filter(x => typeof x === 'string') : [];
-  } catch(e){ return []; }
+const CURRENT_TEAM_KEY = 'fiorente_current_team_id';
+let currentUser = null;
+let currentTeam = null; // { id, name, role }
+
+function rowToSongObj(row){
+  return {
+    id: row.id,
+    title: row.title,
+    artist: row.artist,
+    key: row.key,
+    originalKey: row.original_key,
+    bpm: row.bpm,
+    youtube: row.youtube,
+    mp3: row.mp3,
+    sheetMusic: row.sheet_music,
+    sequence: row.sequence,
+    annotations: row.annotations,
+    chords: row.chords,
+    favorite: row.favorite,
+  };
 }
-function markSetlistDirty(){ if (!localStorage.getItem(SETLIST_DIRTY_KEY)) localStorage.setItem(SETLIST_DIRTY_KEY, String(Date.now())); }
-function clearSetlistDirty(){ localStorage.removeItem(SETLIST_DIRTY_KEY); }
-function isSetlistDirty(){ return !!localStorage.getItem(SETLIST_DIRTY_KEY); }
+const SONG_FIELD_TO_COLUMN = {
+  title:'title', artist:'artist', key:'key', originalKey:'original_key', bpm:'bpm',
+  youtube:'youtube', mp3:'mp3', sheetMusic:'sheet_music', sequence:'sequence',
+  annotations:'annotations', chords:'chords', favorite:'favorite',
+};
+function songPatchToRow(patch){
+  const row = {};
+  Object.keys(patch).forEach(k => { if (SONG_FIELD_TO_COLUMN[k]) row[SONG_FIELD_TO_COLUMN[k]] = patch[k]; });
+  return row;
+}
+function songToInsertRow(song, teamId, importKey){
+  return { team_id: teamId, import_key: importKey || null, ...songPatchToRow(song) };
+}
 
-function saveSetlist(ids){
+async function fetchTeamSongs(teamId){
+  const { data, error } = await sb.from('songs').select('*').eq('team_id', teamId).order('title');
+  if (error) throw error;
+  return (data || []).map(row => coerceSong(rowToSongObj(row))).filter(Boolean);
+}
+
+async function fetchTeamSetlist(teamId){
+  const { data, error } = await sb.from('setlist_items').select('song_id').eq('team_id', teamId).order('position');
+  if (error) throw error;
+  return (data || []).map(r => r.song_id);
+}
+
+// Setlist de hoy: se guarda reemplazando por completo las filas del equipo (borrar +
+// reinsertar con posición = índice). Es una lista corta que arma una sola persona
+// antes del servicio, así que el reemplazo completo es más simple que posiciones
+// fraccionarias y no tiene el riesgo de choque que sí tiene el repertorio completo.
+async function saveSetlist(ids){
   state.setlist = ids;
-  localStorage.setItem(SETLIST_STORAGE_KEY, JSON.stringify(ids));
-  markSetlistDirty();
-  scheduleSetlistCloudPush();
-}
-
-async function loadSetlistFromCloud(){
+  renderLibrary();
+  const teamId = currentTeam.id;
   try {
-    const res = await fetch(`https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${GITHUB_SETLIST_PATH}?_=${Date.now()}`);
-    if (!res.ok) return null; // incluye el 404 esperado antes de que el archivo exista
-    const data = await res.json();
-    return Array.isArray(data) ? data.filter(x => typeof x === 'string') : null;
-  } catch(e){ return null; }
-}
-
-let setlistPushTimer = null;
-let setlistPushInFlight = false;
-let setlistPushPending = false;
-
-function scheduleSetlistCloudPush(){
-  if (!getGithubToken()) return;
-  clearTimeout(setlistPushTimer);
-  setlistPushTimer = setTimeout(runSetlistCloudPush, 1500);
-}
-
-async function runSetlistCloudPush(){
-  if (setlistPushInFlight){ setlistPushPending = true; return; }
-  setlistPushInFlight = true;
-  try {
-    const sentJson = await pushSetlistToCloud();
-    if (JSON.stringify(state.setlist, null, 2) === sentJson) clearSetlistDirty();
+    await sb.from('setlist_items').delete().eq('team_id', teamId);
+    if (ids.length){
+      const rows = ids.map((song_id, i) => ({ team_id: teamId, song_id, position: i }));
+      const { error } = await sb.from('setlist_items').insert(rows);
+      if (error) throw error;
+    }
   } catch(err){
-    showToast('No se guardó el setlist en la nube: ' + err.message, 'error');
-  } finally {
-    setlistPushInFlight = false;
-    if (setlistPushPending){ setlistPushPending = false; runSetlistCloudPush(); }
+    showToast('No se guardó el setlist: ' + err.message, 'error');
   }
-}
-
-async function pushSetlistToCloud(){
-  const token = getGithubToken();
-  if (!token) throw new Error('No hay llave de acceso configurada.');
-  const apiUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_SETLIST_PATH}`;
-
-  async function getSha(){
-    const res = await fetch(`${apiUrl}?ref=${GITHUB_BRANCH}&_=${Date.now()}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
-    });
-    if (res.ok) return (await safeJson(res))?.sha || null;
-    if (res.status === 404) return null;
-    const body = await safeJson(res);
-    throw new Error(body?.message || `código ${res.status} al verificar el archivo del setlist.`);
-  }
-
-  let sentJson;
-  async function putContent(sha){
-    sentJson = JSON.stringify(state.setlist, null, 2);
-    const content = btoa(unescape(encodeURIComponent(sentJson)));
-    return fetch(apiUrl, {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: `Actualizar orden del set (${new Date().toLocaleString('es-CO')})`,
-        content,
-        branch: GITHUB_BRANCH,
-        ...(sha ? { sha } : {}),
-      }),
-    });
-  }
-
-  let sha = await getSha();
-  let putRes = await putContent(sha);
-  if (putRes.status === 409){
-    sha = await getSha();
-    putRes = await putContent(sha);
-  }
-  if (!putRes.ok){
-    const errBody = await safeJson(putRes);
-    throw new Error(errBody?.message || `código ${putRes.status}`);
-  }
-  return sentJson;
 }
 
 function toggleInSetlist(id){
@@ -600,15 +440,9 @@ function slugify(s){
   return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
     .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
 }
-function generateId(title, artist, excludeId){
-  const base = slugify(`${title}-${artist||''}`) || 'cancion';
-  let id = base, n = 1;
-  while (state.songs.some(s => s.id === id && s.id !== excludeId)) id = `${base}-${++n}`;
-  return id;
-}
-// A diferencia de generateId, no se desambigua contra state.songs: dos sincronizaciones
-// de la misma fila deben producir siempre el mismo id, para que mergeImportedSongs
-// actualice la canción existente en vez de duplicarla.
+// El id real de cada canción lo asigna Supabase (uuid) al insertar. Este slug estable
+// se usa solo como import_key para que mergeImportedSongs reconozca la misma fila en
+// sincronizaciones repetidas del mismo Excel/Sheet, sin depender de state.songs.
 function stableSongId(title, artist){
   return slugify(`${title}-${artist||''}`) || 'cancion';
 }
@@ -617,16 +451,44 @@ function blankSong(){
   return { id:'', title:'', artist:'', key:'C', originalKey:'', bpm:null, youtube:'', mp3:'', sheetMusic:'', sequence:[], annotations:'', chords:'', favorite:false };
 }
 
-function addSong(song){ state.songs.push(song); saveSongs(state.songs); }
+// Inserta una fila nueva y espera el id real (uuid) que asigna la base de datos —
+// a diferencia del modelo anterior, el id ya no se genera en el cliente.
+async function addSong(song){
+  const { data, error } = await sb.from('songs').insert(songToInsertRow(song, currentTeam.id)).select().single();
+  if (error) throw error;
+  const newSong = coerceSong(rowToSongObj(data));
+  state.songs.push(newSong);
+  renderLibrary();
+  return newSong;
+}
+// Actualización optimista: se aplica al estado local y se re-renderiza de inmediato;
+// si la escritura al servidor falla se revierte y se avisa, en vez de bloquear la UI
+// esperando la respuesta de red.
 function updateSong(id, patch){
   const s = state.songs.find(s => s.id === id);
   if (!s) return;
+  const prev = { ...s };
   Object.assign(s, patch);
-  saveSongs(state.songs);
+  renderLibrary();
+  sb.from('songs').update(songPatchToRow(patch)).eq('id', id).then(({ error }) => {
+    if (error){
+      Object.assign(s, prev);
+      renderMain(); renderLibrary();
+      showToast('No se guardó el cambio: ' + error.message, 'error');
+    }
+  });
 }
 function deleteSong(id){
+  const removed = state.songs.find(s => s.id === id);
   state.songs = state.songs.filter(s => s.id !== id);
-  saveSongs(state.songs);
+  renderLibrary();
+  sb.from('songs').delete().eq('id', id).then(({ error }) => {
+    if (error && removed){
+      state.songs.push(removed);
+      renderLibrary();
+      showToast('No se pudo borrar en el servidor: ' + error.message, 'error');
+    }
+  });
 }
 function getSong(id){ return state.songs.find(s => s.id === id); }
 
@@ -634,7 +496,7 @@ function getSong(id){ return state.songs.find(s => s.id === id); }
    ESTADO GLOBAL + NAVEGACIÓN
    ============================================================ */
 const state = {
-  songs: loadSongs(),
+  songs: [],
   currentSongId: null,
   transposeSemitones: 0,
   targetKeyStr: 'C',
@@ -643,7 +505,7 @@ const state = {
   mobileView: 'library', // 'library' | 'detail' — solo controla el layout en pantallas angostas
   detailFontSize: parseInt(localStorage.getItem(DETAIL_FONT_KEY), 10) || 17,
   autoScroll: { active:false, rafId:null, lastTs:null },
-  setlist: loadSetlist(), // orden de canciones del set de hoy (IDs)
+  setlist: [], // orden de canciones del set de hoy (IDs) — se carga desde Supabase
   stageSequenceIds: [], // secuencia de navegación siguiente/anterior activa en Modo En Vivo
 };
 
@@ -1200,15 +1062,14 @@ function showToast(message, type){
 }
 
 function openMoreModal(){
-  const hasToken = !!getGithubToken();
   openModal(`
     <div class="p-5">
       <h2 class="text-lg font-bold mb-4 text-white">Más opciones</h2>
       <div class="space-y-2">
-        <button onclick="closeModal(); openCloudSettingsModal();" class="w-full text-left px-4 py-3 rounded-lg bg-neutral-800 hover:bg-neutral-700 flex items-center gap-3">
-          <i class="fa-solid fa-cloud w-4 ${hasToken ? 'text-green-400' : 'text-orange-400'}"></i>
-          <span class="flex-1">Guardado en la nube</span>
-          <span class="text-[10px] font-bold uppercase ${hasToken ? 'text-green-400' : 'text-neutral-500'}">${hasToken ? 'Activo' : 'Sin configurar'}</span>
+        <button onclick="closeModal(); openTeamModal();" class="w-full text-left px-4 py-3 rounded-lg bg-neutral-800 hover:bg-neutral-700 flex items-center gap-3">
+          <i class="fa-solid fa-users w-4 text-orange-400"></i>
+          <span class="flex-1">Mi equipo</span>
+          <span class="text-[10px] font-bold uppercase text-neutral-500 truncate max-w-[110px]">${escapeHtml(currentTeam?.name || '')}</span>
         </button>
         <button onclick="closeModal(); exportBackup();" class="w-full text-left px-4 py-3 rounded-lg bg-neutral-800 hover:bg-neutral-700 flex items-center gap-3"><i class="fa-solid fa-download w-4 text-orange-400"></i> Exportar backup (.json)</button>
         <button onclick="closeModal(); openImportBackupModal();" class="w-full text-left px-4 py-3 rounded-lg bg-neutral-800 hover:bg-neutral-700 flex items-center gap-3"><i class="fa-solid fa-upload w-4 text-orange-400"></i> Restaurar backup (.json)</button>
@@ -1218,46 +1079,44 @@ function openMoreModal(){
   `);
 }
 
-function openCloudSettingsModal(){
-  const hasToken = !!getGithubToken();
+function openTeamModal(){
   openModal(`
     <div class="p-5">
-      <h2 class="text-lg font-bold mb-2 text-white">Guardado en la nube</h2>
-      <p class="text-sm text-neutral-500 mb-3">Con esto configurado, cada cambio que hagas (cifrados, canciones, favoritos) se guarda solo en el repositorio de GitHub y aparece para cualquiera que abra el link — sin que tengas que tocar el Google Sheet nunca más.</p>
-      <ol class="text-xs text-neutral-400 list-decimal list-inside space-y-1.5 mb-4">
-        <li>Ve a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" class="text-orange-400 underline">github.com/settings/personal-access-tokens/new</a></li>
-        <li>En "Repository access" elige "Only select repositories" → selecciona <b class="text-neutral-200">mark-chords</b></li>
-        <li>En "Permissions → Repository permissions" busca <b class="text-neutral-200">Contents</b> y ponlo en <b class="text-neutral-200">Read and write</b></li>
-        <li>Dale "Generate token" y copia la llave (empieza con "github_pat_...")</li>
-      </ol>
-      <label class="text-xs text-neutral-500">Llave de acceso</label>
-      <input id="ghTokenInput" type="password" value="${hasToken ? '' : ''}" placeholder="${hasToken ? 'Ya hay una llave guardada en este dispositivo' : 'github_pat_...'}" class="w-full mt-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm mono focus:outline-none focus:ring-1 focus:ring-orange-500/60">
-      <div id="ghTokenStatus" class="text-sm mt-3"></div>
-      <div class="flex gap-2 mt-4">
-        <button onclick="closeModal()" class="flex-1 py-2.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm font-semibold">Cerrar</button>
-        <button id="btnSaveToken" onclick="handleSaveGithubToken()" class="flex-1 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-black text-sm font-bold">Guardar y probar</button>
+      <h2 class="text-lg font-bold mb-1 text-white">Mi equipo</h2>
+      <p class="text-sm text-neutral-500 mb-4">${escapeHtml(currentTeam?.name || '')} · ${escapeHtml(currentUser?.email || '')}</p>
+      <p class="text-sm text-neutral-400 mb-2">Invita a alguien de tu banda o iglesia compartiéndole este link. Al abrirlo e iniciar sesión con su correo, se une a tu equipo automáticamente:</p>
+      <div class="flex gap-2 mb-1">
+        <input id="inviteLinkInput" readonly value="Generando..." class="flex-1 min-w-0 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-xs mono">
+        <button onclick="copyInviteLink()" class="px-3 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm shrink-0"><i class="fa-solid fa-copy"></i></button>
       </div>
-      ${hasToken ? `<button onclick="setGithubToken(''); closeModal(); showToast('Llave eliminada de este dispositivo', 'info');" class="w-full mt-2 py-2 rounded-lg bg-neutral-800/50 hover:bg-red-900/40 text-red-400 text-xs">Quitar llave de este dispositivo</button>` : ''}
+      <p id="inviteStatus" class="text-xs text-neutral-600 mb-4">Generando link...</p>
+      <button onclick="closeModal(); handleSignOut();" class="w-full py-2.5 rounded-lg bg-neutral-800 hover:bg-red-900/40 text-red-400 text-sm font-semibold">Cerrar sesión</button>
+      <button onclick="closeModal()" class="w-full mt-2 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm">Cerrar</button>
     </div>
-  `, { wide:true });
+  `);
+  generateInviteLink();
 }
 
-async function handleSaveGithubToken(){
-  const input = document.getElementById('ghTokenInput');
-  const statusEl = document.getElementById('ghTokenStatus');
-  const btn = document.getElementById('btnSaveToken');
-  const val = input.value.trim();
-  if (!val){ statusEl.innerHTML = '<span class="text-red-400">Pega una llave válida.</span>'; return; }
-  btn.disabled = true;
-  setGithubToken(val);
-  statusEl.innerHTML = '<span class="text-neutral-500"><i class="fa-solid fa-spinner fa-spin"></i> Probando...</span>';
+async function generateInviteLink(){
+  const input = document.getElementById('inviteLinkInput');
+  const status = document.getElementById('inviteStatus');
   try {
-    await pushSongsToCloud();
-    statusEl.innerHTML = '<span class="text-green-400"><i class="fa-solid fa-check"></i> ¡Listo! Ya está guardando en la nube.</span>';
+    const { data: token, error } = await sb.rpc('create_invite', { p_team_id: currentTeam.id });
+    if (error) throw error;
+    const url = new URL(location.href);
+    url.search = ''; url.hash = '';
+    url.searchParams.set('invite', token);
+    if (input) input.value = url.toString();
+    if (status) status.textContent = 'Válido 7 días, uso ilimitado dentro de ese plazo.';
   } catch(err){
-    statusEl.innerHTML = `<span class="text-red-400">${escapeHtml(err.message)}</span>`;
-    btn.disabled = false;
+    if (input) input.value = '';
+    if (status){ status.textContent = 'No se pudo generar el link: ' + err.message; status.classList.add('text-red-400'); }
   }
+}
+function copyInviteLink(){
+  const input = document.getElementById('inviteLinkInput');
+  if (!input || !input.value) return;
+  navigator.clipboard.writeText(input.value).then(() => showToast('Link copiado', 'success')).catch(() => {});
 }
 
 /* ---------- Setlist de hoy ---------- */
@@ -1399,11 +1258,11 @@ function renderSongFormModal(song, isNew){
       chords: fd.get('chords'),
     };
     if (isNew){
-      patch.id = generateId(patch.title, patch.artist);
       patch.favorite = false;
-      addSong(patch);
-      closeModal();
-      openSong(patch.id);
+      addSong(patch).then(newSong => {
+        closeModal();
+        openSong(newSong.id);
+      }).catch(err => showToast('No se pudo agregar: ' + err.message, 'error'));
     } else {
       updateSong(song.id, patch);
       closeModal();
@@ -1511,25 +1370,74 @@ function importRows(rows, getLink){
   return { columnMap, songs };
 }
 
-function mergeImportedSongs(imported){
-  imported.forEach(song => {
-    const existing = state.songs.find(s => s.id === song.id);
-    if (existing){
-      Object.keys(song).forEach(k => {
-        if (k === 'id' || k === 'favorite') return;
-        const v = song[k];
-        const isEmpty = v === '' || v === null || (Array.isArray(v) && v.length===0);
-        if (!isEmpty) existing[k] = v;
-      });
-    } else {
-      state.songs.push(song);
+// El id que trae cada fila importada (rowToSong/stableSongId, o coerceSong sobre un
+// backup .json) es un slug estable de título+artista — no el uuid real de la fila en
+// Supabase. Se usa como import_key para decidir si esa canción ya existe en el equipo
+// (se actualiza, solo en los campos que el import trae con valor) o si es nueva (se
+// inserta), igual que antes hacía el merge contra el archivo completo.
+async function mergeImportedSongs(imported){
+  const teamId = currentTeam.id;
+  try {
+    const importKeys = imported.map(s => s.id);
+    const { data: existingRows, error: exErr } = await sb.from('songs')
+      .select('id, import_key').eq('team_id', teamId).in('import_key', importKeys);
+    if (exErr) throw exErr;
+    const existingByKey = new Map((existingRows || []).map(r => [r.import_key, r]));
+
+    const toInsert = [];
+    const updates = [];
+    imported.forEach(song => {
+      const existing = existingByKey.get(song.id);
+      if (existing){
+        const patch = {};
+        Object.keys(song).forEach(k => {
+          if (k === 'id' || k === 'favorite') return;
+          const v = song[k];
+          const isEmpty = v === '' || v === null || (Array.isArray(v) && v.length === 0);
+          if (!isEmpty) patch[k] = v;
+        });
+        if (Object.keys(patch).length) updates.push(sb.from('songs').update(songPatchToRow(patch)).eq('id', existing.id));
+      } else {
+        toInsert.push(songToInsertRow(song, teamId, song.id));
+      }
+    });
+    if (toInsert.length){
+      const { error } = await sb.from('songs').insert(toInsert);
+      if (error) throw error;
     }
-  });
-  saveSongs(state.songs);
+    if (updates.length){
+      const results = await Promise.all(updates);
+      const failed = results.find(r => r.error);
+      if (failed) throw failed.error;
+    }
+    state.songs = await fetchTeamSongs(teamId);
+    renderLibrary();
+    renderMain();
+    showToast('Repertorio actualizado ✓', 'success');
+  } catch(err){
+    showToast('No se pudo importar: ' + err.message, 'error');
+  }
 }
-function replaceAllSongs(imported){
-  state.songs = imported;
-  saveSongs(state.songs);
+async function replaceAllSongs(imported){
+  const teamId = currentTeam.id;
+  try {
+    const { error: delErr } = await sb.from('songs').delete().eq('team_id', teamId);
+    if (delErr) throw delErr;
+    if (imported.length){
+      const rows = imported.map(song => songToInsertRow(song, teamId, song.id));
+      const { error } = await sb.from('songs').insert(rows);
+      if (error) throw error;
+    }
+    state.songs = await fetchTeamSongs(teamId);
+    const validIds = new Set(state.songs.map(s => s.id));
+    if (state.setlist.some(id => !validIds.has(id))) saveSetlist(state.setlist.filter(id => validIds.has(id)));
+    state.currentSongId = null;
+    renderLibrary();
+    renderMain();
+    showToast('Repertorio reemplazado ✓', 'success');
+  } catch(err){
+    showToast('No se pudo reemplazar: ' + err.message, 'error');
+  }
 }
 
 function showImportPreview(songs, source){
@@ -1767,7 +1675,7 @@ function exportBackup(){
   const a = document.createElement('a');
   const date = new Date().toISOString().slice(0,10);
   a.href = url;
-  a.download = `mark-chords-backup-${date}.json`;
+  a.download = `fiorente-chords-backup-${date}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -1800,64 +1708,198 @@ function openImportBackupModal(){
 }
 
 /* ============================================================
-   CARGA INICIAL
+   CARGA INICIAL (una vez hay sesión + equipo activo)
    ============================================================ */
-// Al abrir, se lee el repertorio directo del repositorio de GitHub (la fuente de la
-// verdad compartida por todos) — sin login, sin depender del Google Sheet. Si no hay
-// internet o el archivo aún no existe, se sigue viendo lo que ya había guardado
-// localmente en este dispositivo (cargado de entrada en state.songs), sin bloquear
-// ni interrumpir a nadie.
 async function loadInitialData(){
   const icon = document.getElementById('syncIcon');
   if (icon) icon.classList.add('fa-spin');
   try {
-    const [cloud, cloudSetlist] = await Promise.all([loadSongsFromCloud(), loadSetlistFromCloud()]);
-    if (cloud){
-      if (isDirty()){
-        // Hay una edición local que todavía no se confirmó guardada en la nube (por
-        // ejemplo, se recargó la página antes de que pasara el debounce de 1.5s, o el
-        // guardado anterior falló). Adoptar la copia de la nube ahora la borraría en
-        // silencio — se conserva la local y se reintenta subirla en su lugar.
-        showToast('Tienes cambios sin guardar en la nube — reintentando...', 'info');
-        runCloudPush();
-      } else {
-        state.songs = cloud;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(cloud)); // cache local; no dispara push de vuelta
-      }
-    }
-    if (cloudSetlist){
-      if (isSetlistDirty()){
-        runSetlistCloudPush();
-      } else {
-        state.setlist = cloudSetlist;
-        localStorage.setItem(SETLIST_STORAGE_KEY, JSON.stringify(cloudSetlist));
-      }
-    }
+    const teamId = currentTeam.id;
+    const [songs, setlist] = await Promise.all([fetchTeamSongs(teamId), fetchTeamSetlist(teamId)]);
+    state.songs = songs;
+    state.setlist = setlist.filter(id => songs.some(s => s.id === id));
+    const badge = document.getElementById('teamBadge');
+    if (badge) badge.textContent = currentTeam.name;
     renderLibrary();
     renderMain();
   } catch(err){
-    console.warn('No se pudo cargar el repertorio de la nube (se sigue mostrando el local):', err.message);
+    showToast('No se pudo cargar el repertorio: ' + err.message, 'error');
   } finally {
     if (icon) icon.classList.remove('fa-spin');
   }
 }
 
-// Si un guardado quedó pendiente por falta de conexión, se reintenta solo apenas
-// vuelva internet — sin esto, solo se reintentaba si el usuario volvía a editar algo.
-window.addEventListener('online', () => {
-  if (!getGithubToken()) return;
-  if (isDirty()) runCloudPush();
-  if (isSetlistDirty()) runSetlistCloudPush();
-});
+/* ============================================================
+   AUTENTICACIÓN Y EQUIPOS
+   ============================================================
+   Login por link mágico (correo, sin contraseña) — pensado para voluntarios de
+   iglesia que abren esto poco frecuente y para quienes "olvidé mi contraseña" sería
+   la fuente de soporte más común. Tras iniciar sesión, cada usuario pertenece a uno
+   o más equipos (tabla memberships); si no tiene ninguno, se le pide crear el suyo.
+   ============================================================ */
+function showAuthGate(){ document.getElementById('authGate').classList.remove('hidden'); }
+function hideAuthGate(){ document.getElementById('authGate').classList.add('hidden'); }
 
-// Aviso de "hay cambios sin guardar" si se cierra/recarga la pestaña justo cuando un
-// guardado está en curso o quedó pendiente — reduce el riesgo de perder una edición.
-window.addEventListener('beforeunload', (e) => {
-  if (cloudPushInFlight || isDirty() || setlistPushInFlight || isSetlistDirty()){
-    e.preventDefault();
-    e.returnValue = '';
+function renderAuthGate(mode, errorMsg){
+  const card = document.getElementById('authGateCard');
+  const brand = `
+    <div class="text-center mb-6">
+      <span class="inline-flex w-12 h-12 rounded-xl bg-orange-500 text-black items-center justify-center text-xl mb-3"><i class="fa-solid fa-music"></i></span>
+      <h1 class="text-xl font-extrabold text-white">Fiorente Chords</h1>
+      <p class="text-sm text-neutral-500 mt-1">Cifrados en vivo para tu banda o iglesia.</p>
+    </div>`;
+
+  if (mode === 'sent'){
+    card.innerHTML = brand + `
+      <div class="text-center">
+        <i class="fa-solid fa-envelope-circle-check text-3xl text-orange-400 mb-3"></i>
+        <p class="text-sm text-neutral-300">Te enviamos un link de acceso. Ábrelo desde este mismo dispositivo para entrar.</p>
+      </div>`;
+    return;
   }
-});
+
+  if (mode === 'create-team'){
+    card.innerHTML = brand + `
+      <p class="text-sm text-neutral-400 mb-4">Hola${currentUser?.email ? ', ' + escapeHtml(currentUser.email) : ''}. Todavía no tienes un equipo — créalo para empezar tu repertorio.</p>
+      <form id="createTeamForm" class="space-y-3">
+        <div>
+          <label class="text-xs text-neutral-500">Nombre del equipo, banda o iglesia</label>
+          <input name="teamName" required placeholder="Ej. Alabanza Agua Fresca" class="w-full mt-1 bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500/60">
+        </div>
+        <div id="createTeamStatus" class="text-sm"></div>
+        <button type="submit" class="w-full py-2.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-black text-sm font-bold">Crear equipo</button>
+      </form>
+      <button onclick="handleSignOut()" class="w-full mt-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-neutral-500 text-xs">Cerrar sesión</button>`;
+    document.getElementById('createTeamForm').addEventListener('submit', handleCreateTeam);
+    return;
+  }
+
+  if (mode === 'error'){
+    card.innerHTML = brand + `
+      <p class="text-sm text-red-400 mb-4">${escapeHtml(errorMsg || 'Ocurrió un error inesperado.')}</p>
+      <button onclick="bootstrapSession()" class="w-full py-2.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-black text-sm font-bold mb-2">Reintentar</button>
+      <button onclick="handleSignOut()" class="w-full py-2 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-neutral-500 text-xs">Cerrar sesión</button>`;
+    return;
+  }
+
+  // mode === 'login'
+  card.innerHTML = brand + `
+    <form id="loginForm" class="space-y-3">
+      <div>
+        <label class="text-xs text-neutral-500">Correo</label>
+        <input name="email" type="email" required placeholder="tu@correo.com" class="w-full mt-1 bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500/60">
+      </div>
+      <div id="loginStatus" class="text-sm"></div>
+      <button type="submit" class="w-full py-2.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-black text-sm font-bold">Enviar link de acceso</button>
+    </form>
+    <p class="text-xs text-neutral-600 text-center mt-4">Sin contraseñas — te enviamos un link a tu correo cada vez que necesites entrar desde un dispositivo nuevo.</p>`;
+  document.getElementById('loginForm').addEventListener('submit', handleLoginSubmit);
+}
+
+async function handleLoginSubmit(e){
+  e.preventDefault();
+  const email = new FormData(e.target).get('email').trim();
+  const status = document.getElementById('loginStatus');
+  const btn = e.target.querySelector('button[type=submit]');
+  btn.disabled = true;
+  status.innerHTML = '<span class="text-neutral-500"><i class="fa-solid fa-spinner fa-spin"></i> Enviando...</span>';
+  const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
+  if (error){
+    status.innerHTML = `<span class="text-red-400">${escapeHtml(error.message)}</span>`;
+    btn.disabled = false;
+  } else {
+    renderAuthGate('sent');
+  }
+}
+
+async function handleCreateTeam(e){
+  e.preventDefault();
+  const teamName = new FormData(e.target).get('teamName').trim();
+  const status = document.getElementById('createTeamStatus');
+  const btn = e.target.querySelector('button[type=submit]');
+  btn.disabled = true;
+  status.innerHTML = '<span class="text-neutral-500"><i class="fa-solid fa-spinner fa-spin"></i> Creando...</span>';
+  try {
+    const { error } = await sb.rpc('create_team_with_owner', { team_name: teamName });
+    if (error) throw error;
+    await bootstrapSession();
+  } catch(err){
+    status.innerHTML = `<span class="text-red-400">${escapeHtml(err.message)}</span>`;
+    btn.disabled = false;
+  }
+}
+
+async function handleSignOut(){
+  await sb.auth.signOut();
+  currentUser = null;
+  currentTeam = null;
+  localStorage.removeItem(CURRENT_TEAM_KEY);
+  state.songs = [];
+  state.setlist = [];
+  state.currentSongId = null;
+  renderAuthGate('login');
+  showAuthGate();
+}
+
+async function fetchMyTeams(){
+  const { data, error } = await sb.from('memberships').select('team_id, role, teams(name)').eq('user_id', currentUser.id);
+  if (error) throw error;
+  return (data || []).map(m => ({ id: m.team_id, role: m.role, name: m.teams?.name || 'Equipo' }));
+}
+
+// Punto de entrada tras cada cambio de sesión: resuelve invitaciones pendientes en la
+// URL, decide si hay que pedir crear un equipo, y si ya hay uno activo carga los datos.
+async function bootstrapSession(){
+  if (!currentUser){
+    renderAuthGate('login');
+    showAuthGate();
+    return;
+  }
+  try {
+    const url = new URL(location.href);
+    const inviteToken = url.searchParams.get('invite');
+    if (inviteToken){
+      try { await sb.rpc('redeem_invite', { p_token: inviteToken }); }
+      catch(err){ showToast('Invitación: ' + err.message, 'error'); }
+      url.searchParams.delete('invite');
+      history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
+    }
+
+    const teams = await fetchMyTeams();
+    if (!teams.length){
+      renderAuthGate('create-team');
+      showAuthGate();
+      return;
+    }
+    const savedId = localStorage.getItem(CURRENT_TEAM_KEY);
+    currentTeam = teams.find(t => t.id === savedId) || teams[0];
+    localStorage.setItem(CURRENT_TEAM_KEY, currentTeam.id);
+    hideAuthGate();
+    await loadInitialData();
+  } catch(err){
+    renderAuthGate('error', err.message);
+    showAuthGate();
+  }
+}
+
+async function initAuth(){
+  const { data: { session } } = await sb.auth.getSession();
+  currentUser = session?.user || null;
+  sb.auth.onAuthStateChange((event, session) => {
+    const user = session?.user || null;
+    const changed = (user?.id || null) !== (currentUser?.id || null);
+    currentUser = user;
+    if (event === 'SIGNED_OUT'){
+      currentTeam = null;
+      localStorage.removeItem(CURRENT_TEAM_KEY);
+      renderAuthGate('login');
+      showAuthGate();
+    } else if (changed){
+      bootstrapSession();
+    }
+  });
+  await bootstrapSession();
+}
 
 /* ============================================================
    INIT
@@ -1865,7 +1907,7 @@ window.addEventListener('beforeunload', (e) => {
 applyResponsiveLayout();
 renderLibrary();
 renderMain();
-loadInitialData();
+initAuth();
 </script>
 </body>
 </html>
